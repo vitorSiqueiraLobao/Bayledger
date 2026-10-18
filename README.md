@@ -166,6 +166,8 @@ deploy/            Scripts to run it on a small always-on machine (see deploy/RE
 
 [PolyForm Internal Use License 1.0.0](LICENSE). In plain words: you may use and modify this software to run **your own business** (your own workshop). You may **not** distribute it (not even for free), sublicense it, sell it, offer it as a service to other businesses, or build a product on top of it. The text in [LICENSE](LICENSE) is what counts.
 
+**Freelancers and consultants:** you may install, configure, adapt, maintain and support it for a workshop's own use and charge for that work (see *Additional permission* at the top of [LICENSE](LICENSE)). You may not sell or rent the software itself, bundle it into a product, or host it as a service for several businesses. The work can be sold; the software cannot.
+
 This is a *source-available* license, not an OSI-approved open-source one. If you want to do something it does not allow (for example, offer the app to other shops), contact the author.
 
 The inline icons are from [Lucide](https://lucide.dev) and keep their own license (ISC).
