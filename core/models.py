@@ -117,6 +117,24 @@ class Mecanico(models.Model):
         return self.nome
 
 
+class PagamentoMecanico(models.Model):
+    """Cada acerto com um mecânico: quanto o dono pagou e quais mãos de obra quitou (ItemOS.acerto)."""
+    mecanico = models.ForeignKey(Mecanico, on_delete=models.PROTECT, related_name='acertos',
+                                 verbose_name='mecânico')
+    data = models.DateField()
+    valor = models.DecimalField(max_digits=10, decimal_places=2)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, editable=False)
+
+    class Meta:
+        ordering = ['-data', '-id']
+        verbose_name = 'acerto com mecânico'
+        verbose_name_plural = 'acertos com mecânicos'
+
+    def __str__(self):
+        return f'Acerto {self.mecanico} {self.data:%d/%m/%Y}'
+
+
 class OrdemServico(models.Model):
     ABERTA, FINALIZADA, PAGA, CANCELADA = 'aberta', 'finalizada', 'paga', 'cancelada'
     STATUS = [
@@ -226,6 +244,8 @@ class ItemOS(models.Model):
         'parte do dono (%)', max_digits=5, decimal_places=2, default=Decimal('100'),
         validators=[MinValueValidator(0), MaxValueValidator(100)],
         help_text='Percentual aplicado na hora do lançamento (vem do cadastro do mecânico).')
+    acerto = models.ForeignKey(PagamentoMecanico, on_delete=models.PROTECT, null=True, blank=True,
+                               related_name='itens', help_text='Acerto em que a parte do mecânico foi paga.')
     criado_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -269,6 +289,10 @@ class ItemOS(models.Model):
             return {}
         dono = (total * self.percentual_dono / 100).quantize(Decimal('0.01'))
         return {'dono': dono, self.mecanico: total - dono}  # o mecânico fica com o resto: centavos não somem
+
+    def parte_mecanico(self):
+        """Quanto desta mão de obra é do mecânico (zero se o dono fez sozinho)."""
+        return self.divisao().get(self.mecanico, Decimal('0')) if self.mecanico_id else Decimal('0')
 
 
 class Registro(models.Model):

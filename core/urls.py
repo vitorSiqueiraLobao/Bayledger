@@ -17,6 +17,8 @@ urlpatterns = [
     path('os/<int:pk>/imprimir/', views.imprimir_os, name='imprimir_os'),
     path('lojas/', views.contas_lojas, name='contas'),
     path('lojas/<int:pk>/', views.conta_loja, name='conta_loja'),
+    path('mecanicos/', views.acertos, name='acertos'),
+    path('mecanicos/<int:pk>/', views.acerto_mecanico, name='acerto_mecanico'),
     path('faturamento/', views.faturamento, name='faturamento'),
     path('exportar/itens.csv', views.exportar_itens, name='exportar_itens'),
 ]

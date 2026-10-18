@@ -15,6 +15,7 @@ It is a Django project with server-rendered pages and almost no JavaScript, so i
 | **Work orders** | Start from the plate: a known car opens its history, a new one asks for make/model/customer. Each OS has parts, labor, mileage and what the customer asked for. |
 | **Parts and labor** | Parts record where they came from (store on credit, store paid on the spot, internet, customer brought it, shop stock), the price charged to the customer and the cost at the store. Labor records who did it: the owner, any mechanic, or the owner together with a mechanic. |
 | **Store accounts ("fiado")** | Parts bought on credit are tracked per store. *Owed now* = the customer already paid; *expected* = the OS is still open. Pay a store by ticking the parts you are settling; every payment is kept as a record. |
+| **Settling with mechanics** | What the shop owes each mechanic for his share of the labor. *Owed now* = the customer already paid; *expected* = the OS is still open. One button records the payment, and every settlement is kept with the jobs it covered. |
 | **Receipt photos** | The part form opens the phone camera. Photos are resized (long side 2560 px, JPEG), stripped of GPS/EXIF and stored under `media/notas/`. One paper = one photo: a receipt taken in the last 7 days can be reused for other parts, with a full-screen viewer to flip through them. |
 | **Revenue** | Totals for today / this week / this month / custom dates, by payment method, parts vs. labor, the markup on parts, the labor split between owner and mechanic, and the owner's result. |
 | **Print and WhatsApp** | A print-friendly page per OS (it does not show the labor split) and a pre-filled WhatsApp message with the cash and card totals. |
@@ -32,7 +33,7 @@ aberta (open, editable) ──► finalizada ("ready, waiting for payment") ─�
 
 - An open OS can also be paid directly, and a finalized one can be reopened by anyone.
 - An OS is **never deleted**, only cancelled with a reason. Numbers are sequential with no gaps.
-- Items can only be added or removed while the OS is open. A part already paid to its store cannot be removed.
+- Items can only be added or removed while the OS is open. A part already paid to its store, or a labor line already settled with its mechanic, cannot be removed.
 - Anyone logged in can finalize, pay or cancel an unpaid OS. Reopening or cancelling a **paid** OS, and reopening a cancelled one, is only for the owner (`is_staff`).
 
 ### Money rules
@@ -50,6 +51,7 @@ aberta (open, editable) ──► finalizada ("ready, waiting for payment") ─�
 
   The percentage applied is **saved on the labor line** at the time it is logged. Changing a mechanic's percentages later only affects new lines; past orders and the revenue screen do not move. Two mechanics on the same job? Log it as two labor lines.
 
+- **Settling with a mechanic** (*acerto*): his balance is his share of the labor lines of **paid** OS that are not in any settlement yet. *Paguei* records a settlement (date, amount, who registered it) and links those lines to it, so they leave the balance. Lines of open or ready OS show as *expected* and join the balance once the customer pays.
 - **Owner's result** = owner's share of the labor (from everybody) + convenience fee. Only paid OS count, by payment date, at the cash price.
 
 ### Users and permissions
@@ -57,7 +59,7 @@ aberta (open, editable) ──► finalizada ("ready, waiting for payment") ─�
 There are no custom roles, only Django's:
 
 - **Owner** = a staff user (the superuser you create at install time). Can open the admin panel at `/painel/`, reopen/cancel paid OS, export the CSV, and sees the audit history.
-- **Employees** = any other user. Can do everything day to day (orders, parts, store payments, revenue screen) but not the owner-only actions above. Create them in `/painel/` → *Users* → *Add*, leaving *Staff status* unchecked.
+- **Employees** = any other user. Can do everything day to day (orders, parts, store payments, settling with mechanics, revenue screen) but not the owner-only actions above. Create them in `/painel/` → *Users* → *Add*, leaving *Staff status* unchecked.
 
 - **Mechanics** are not users: they are records in the admin panel with their sharing rule (see above). Stop one from showing up on the form by unticking *Ativo*; his past jobs keep his name. Add as many as you need.
 
@@ -119,6 +121,7 @@ Things that are code constants rather than settings: the payment methods, order 
 | `/os/<id>/item/<item>/remover/`, `/os/<id>/status/` | POST: remove an item; finalize, pay, reopen, cancel |
 | `/os/<id>/imprimir/` | Printable OS |
 | `/lojas/`, `/lojas/<id>/` | Store accounts; settle a store (POST) |
+| `/mecanicos/`, `/mecanicos/<id>/` | Mechanics' balances; settle with a mechanic (POST) |
 | `/faturamento/` | Revenue |
 | `/exportar/itens.csv` | CSV of every line item (owner only) |
 | `/media/<path>` | Receipt photos (login required) |
@@ -129,7 +132,7 @@ Things that are code constants rather than settings: the payment methods, order 
 ```
 config/            Django settings, URLs, WSGI
 core/
-  models.py        Cliente, Veiculo, Mecanico, Loja, Nota, PagamentoLoja, OrdemServico, ItemOS, Registro
+  models.py        Cliente, Veiculo, Mecanico, Loja, Nota, PagamentoLoja, PagamentoMecanico, OrdemServico, ItemOS, Registro
   views.py         All the screens
   forms.py         Forms and validation
   audit.py         Signals + middleware that fill the audit trail (Registro)
@@ -154,6 +157,7 @@ deploy/            Scripts to run it on a small always-on machine (see deploy/RE
 | Placa | License plate |
 | Dono | Owner |
 | Mecânico | Mechanic (a person who does labor, with his own sharing rule) |
+| Acerto | Settlement: paying a mechanic his share |
 | Taxa de comodidade | Convenience fee (markup on parts) |
 | Faturamento | Revenue |
 | Registro | Audit-trail entry |

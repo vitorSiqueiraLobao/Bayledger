@@ -39,8 +39,9 @@ def _valores(instance):
 
 
 def _modelos_auditados():
-    from .models import Cliente, ItemOS, Loja, Mecanico, Nota, OrdemServico, PagamentoLoja, Veiculo
-    return (Cliente, Veiculo, Loja, Mecanico, Nota, OrdemServico, ItemOS, PagamentoLoja)
+    from .models import (Cliente, ItemOS, Loja, Mecanico, Nota, OrdemServico, PagamentoLoja, PagamentoMecanico,
+                         Veiculo)
+    return (Cliente, Veiculo, Loja, Mecanico, Nota, OrdemServico, ItemOS, PagamentoLoja, PagamentoMecanico)
 
 
 def _registrar(instance, acao, mudancas):

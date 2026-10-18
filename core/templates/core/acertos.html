@@ -1,0 +1,37 @@
+{% extends 'core/base.html' %}
+{% load formatos icones %}
+{% block titulo %}Acerto com mecânicos{% endblock %}
+{% block conteudo %}
+<h1>Acerto com mecânicos</h1>
+<div class="cartao totais">
+  <div class="principal"><span>A pagar agora</span><span>{{ devido|brl }}</span></div>
+  <div><span>Previsto</span><span>{{ previsto|brl }}</span></div>
+</div>
+<p class="ajuda"><strong>A pagar agora</strong>: parte de cada mecânico na mão de obra de OS que o cliente já pagou.
+  <strong>Previsto</strong>: de OS ainda aberta ou pronta. Toque no mecânico para registrar o pagamento.</p>
+<div class="cartao">
+  <ul class="lista">
+  {% for s in saldos %}
+    <li><a class="linha-os" href="{% url 'acerto_mecanico' s.mecanico.pk %}">
+      <span><strong>{{ s.mecanico.nome }}</strong><br><span class="sub">{{ s.servicos }} serviço(s){% if s.previsto %} · previsto {{ s.previsto|brl }}{% endif %}</span></span>
+      <span class="valor"><strong>{{ s.devido|brl }}</strong><br><span class="sub">agora</span></span></a></li>
+  {% empty %}
+    <li class="vazio">Nenhum mecânico cadastrado.</li>
+  {% endfor %}
+  </ul>
+</div>
+
+{% if pagamentos %}
+<h2>Últimos acertos</h2>
+<div class="cartao">
+  <ul class="lista">
+  {% for p in pagamentos %}
+    <li><a class="linha-os" href="{% url 'acerto_mecanico' p.mecanico_id %}">
+      <span><strong>{{ p.mecanico }}</strong><br>
+        <span class="sub">{{ p.data|date:"d/m/Y" }} · {{ p.servicos }} serviço(s){% if p.criado_por %} · {{ p.criado_por }}{% endif %}</span></span>
+      <span class="valor">{{ p.valor|brl }}</span></a></li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}

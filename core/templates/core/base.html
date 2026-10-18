@@ -13,6 +13,7 @@
     {% if user.is_authenticated %}
       <span class="usuario"><a href="{% url 'contas' %}" style="font-size:.85rem">lojas</a> ·
         <a href="{% url 'faturamento' %}" style="font-size:.85rem">faturamento</a> ·
+        <a href="{% url 'acertos' %}" style="font-size:.85rem">mecânicos</a> ·
         {{ user.first_name|default:user.username }}
         {% if user.is_staff %}· <a href="{% url 'admin:index' %}" style="font-size:.85rem">painel</a>{% endif %}
         · <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button>sair</button></form>

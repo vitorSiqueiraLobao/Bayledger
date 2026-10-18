@@ -1,7 +1,8 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Cliente, ItemOS, Loja, Mecanico, Nota, OrdemServico, PagamentoLoja, Registro, Veiculo
+from .models import (Cliente, ItemOS, Loja, Mecanico, Nota, OrdemServico, PagamentoLoja, PagamentoMecanico, Registro,
+                     Veiculo)
 from .templatetags.formatos import brl
 
 
@@ -42,9 +43,9 @@ class ItemInline(admin.TabularInline):
     model = ItemOS
     extra = 0
     fields = ['tipo', 'descricao', 'quantidade', 'preco_unitario', 'custo_unitario', 'executor', 'mecanico',
-              'percentual_dono', 'origem', 'loja', 'nota', 'pago_loja_em', 'pagamento']
+              'percentual_dono', 'acerto', 'origem', 'loja', 'nota', 'pago_loja_em', 'pagamento']
     autocomplete_fields = ['loja', 'mecanico']
-    raw_id_fields = ['nota', 'pagamento']
+    raw_id_fields = ['nota', 'pagamento', 'acerto']
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -71,8 +72,8 @@ class OrdemServicoAdmin(SemApagar, admin.ModelAdmin):
 @admin.register(ItemOS)
 class ItemOSAdmin(SemApagar, admin.ModelAdmin):
     list_display = ['os', 'tipo', 'descricao', 'quantidade', 'preco_unitario', 'custo_unitario', 'executor',
-                    'mecanico', 'percentual_dono', 'origem', 'loja', 'nota', 'pago_loja_em', 'pagamento']
-    raw_id_fields = ['nota', 'pagamento']
+                    'mecanico', 'percentual_dono', 'acerto', 'origem', 'loja', 'nota', 'pago_loja_em', 'pagamento']
+    raw_id_fields = ['nota', 'pagamento', 'acerto']
     list_filter = ['tipo', 'executor', 'mecanico', 'origem', 'loja', 'pago_loja_em']
     search_fields = ['descricao', 'os__veiculo__placa']
 
@@ -104,6 +105,37 @@ class PagamentoLojaAdmin(SemApagar, admin.ModelAdmin):
         return brl(obj.valor)
 
     @admin.display(description='peças')
+    def qtd_itens(self, obj):
+        return obj.itens.count()
+
+
+class ServicoAcertadoInline(admin.TabularInline):
+    model = ItemOS
+    fk_name = 'acerto'
+    extra = 0
+    fields = ['os', 'descricao', 'preco_unitario', 'executor', 'percentual_dono']
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PagamentoMecanico)
+class PagamentoMecanicoAdmin(SemApagar, admin.ModelAdmin):
+    list_display = ['data', 'mecanico', 'valor_brl', 'qtd_itens', 'criado_por']
+    list_filter = ['mecanico', 'data']
+    date_hierarchy = 'data'
+    readonly_fields = ['criado_em', 'criado_por']
+    inlines = [ServicoAcertadoInline]
+
+    @admin.display(description='valor')
+    def valor_brl(self, obj):
+        return brl(obj.valor)
+
+    @admin.display(description='serviços')
     def qtd_itens(self, obj):
         return obj.itens.count()
 

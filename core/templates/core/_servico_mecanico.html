@@ -1,0 +1,4 @@
+{% load formatos %}<li class="item"><span class="desc"><strong>{{ i.descricao }}</strong><br>
+  <span class="sub"><a href="{% url 'os' i.os_id %}">OS {{ i.os.numero }}</a> · {{ i.os.veiculo.placa }}{% if i.os.pago_em %} · pago {{ i.os.pago_em|date:"d/m" }}{% endif %}
+    <br>{{ i.quem_fez }} · mão de obra {{ i.total|brl }}</span></span>
+  <span class="valor">{{ i.parte_mecanico|brl }}</span></li>

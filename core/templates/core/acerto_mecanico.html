@@ -1,0 +1,53 @@
+{% extends 'core/base.html' %}
+{% load formatos icones %}
+{% block titulo %}{{ mecanico }}{% endblock %}
+{% block conteudo %}
+<h1>{{ mecanico }}</h1>
+<div class="cartao totais">
+  <div class="principal"><span>A pagar agora</span><span>{{ devido|brl }}</span></div>
+  <div><span>Previsto</span><span>{{ previsto|brl }}</span></div>
+</div>
+
+<h2>A pagar agora</h2>
+<p class="ajuda">Parte de {{ mecanico }} na mão de obra de OS que o cliente já pagou.</p>
+<div class="cartao">
+  <ul class="lista">
+  {% for i in devidos %}{% include 'core/_servico_mecanico.html' %}
+  {% empty %}<li class="vazio">Nada a pagar agora.</li>{% endfor %}
+  </ul>
+</div>
+{% if devidos %}
+<form method="post" onsubmit="return confirm('Registrar que {{ mecanico|escapejs }} recebeu {{ devido|brl|escapejs }}?')">{% csrf_token %}
+  {% for i in devidos %}<input type="hidden" name="itens" value="{{ i.pk }}">{% endfor %}
+  <button class="botao verde">{% icone "dinheiro" %} Paguei {{ devido|brl }} a {{ mecanico }}</button>
+</form>
+{% endif %}
+
+{% if previstos %}
+<h2>Previsto</h2>
+<p class="ajuda">OS ainda aberta ou pronta: entra no acerto quando o cliente pagar.</p>
+<div class="cartao">
+  <ul class="lista">
+  {% for i in previstos %}{% include 'core/_servico_mecanico.html' %}{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<h2>Acertos feitos</h2>
+<div class="cartao">
+  <ul class="lista">
+  {% for p in pagamentos %}
+    <li><details class="pagamento">
+      <summary class="item"><span class="desc"><strong>{{ p.data|date:"d/m/Y" }}</strong><br>
+        <span class="sub">{{ p.itens.all|length }} serviço(s){% if p.criado_por %} · {{ p.criado_por }}{% endif %}</span></span>
+        <span class="valor">{{ p.valor|brl }}</span></summary>
+      <ul class="lista">
+      {% for i in p.itens.all %}{% include 'core/_servico_mecanico.html' %}{% endfor %}
+      </ul>
+    </details></li>
+  {% empty %}
+    <li class="vazio">Nenhum acerto registrado.</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endblock %}

@@ -11,6 +11,7 @@
   <a class="botao secundario grande" href="{% url 'todas_os' %}">{% icone "lista" %} Todas as OS</a>
   <a class="botao secundario grande" href="{% url 'contas' %}">{% icone "recibo" %} Contas das lojas (fiado)</a>
   <a class="botao secundario grande" href="{% url 'faturamento' %}">{% icone "dinheiro" %} Faturamento</a>
+  {% if tem_mecanicos %}<a class="botao secundario grande" href="{% url 'acertos' %}">{% icone "chave" %} Acerto com mecânicos</a>{% endif %}
 </div>
 
 <h2>Carros na oficina agora</h2>

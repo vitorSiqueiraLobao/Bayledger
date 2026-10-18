@@ -21,7 +21,7 @@ from django.views.static import serve
 from .forms import (BuscaOSForm, CancelarForm, FaturamentoForm, NovaOSCarroConhecidoForm, NovaOSCarroNovoForm,
                     PagarForm, PecaForm, PlacaForm, ServicoForm)
 from .imagens import reduzir_foto
-from .models import Cliente, ItemOS, Loja, Nota, OrdemServico, PagamentoLoja, Veiculo
+from .models import Cliente, ItemOS, Loja, Mecanico, Nota, OrdemServico, PagamentoLoja, PagamentoMecanico, Veiculo
 from .templatetags.formatos import brl, qtd
 
 NOTAS_DIAS = 7  # até quantos dias atrás uma nota já fotografada pode ser reaproveitada em outra peça
@@ -42,7 +42,8 @@ def foto_protegida(request, path):
 def inicio(request):
     abertas = (OrdemServico.objects.filter(status__in=[OrdemServico.ABERTA, OrdemServico.FINALIZADA])
                .select_related('veiculo', 'cliente'))
-    return render(request, 'core/inicio.html', {'abertas': abertas, 'form': PlacaForm()})
+    return render(request, 'core/inicio.html', {'abertas': abertas, 'form': PlacaForm(),
+                                                'tem_mecanicos': Mecanico.objects.exists()})
 
 
 @login_required
@@ -263,6 +264,9 @@ def remover_item(request, pk, item_pk):
     if item.pagamento_id:
         messages.error(request, f'{item.descricao} já foi paga à loja e não pode sair da OS.')
         return redirect('os', os_.pk)
+    if item.acerto_id:
+        messages.error(request, f'{item.descricao} já foi acertada com {item.mecanico} e não pode sair da OS.')
+        return redirect('os', os_.pk)
     item.delete()
     messages.success(request, f'{item.descricao} removido.')
     return redirect('os', os_.pk)
@@ -424,6 +428,69 @@ def faturamento(request):
         'pecas': pecas['preco'], 'custo_pecas': pecas['custo'], 'comodidade': comodidade,
         'servicos': servicos, 'mao_de_obra': _linhas_divisao(partes), 'sem_executor': sem_executor,
         'resultado_dono': partes['dono'] + comodidade, 'nome_dono': settings.NOME_DONO,
+    })
+
+
+def _mao_de_obra_a_acertar():
+    """Mãos de obra com parte de mecânico que ainda não entraram em nenhum acerto."""
+    return (ItemOS.objects.filter(tipo=ItemOS.SERVICO, executor__in=[ItemOS.MECANICO, ItemOS.AMBOS],
+                                  mecanico__isnull=False, acerto__isnull=True)
+            .exclude(os__status=OrdemServico.CANCELADA))
+
+
+def _soma_mecanico(itens):
+    return sum((i.parte_mecanico() for i in itens), Decimal('0'))
+
+
+@login_required
+def acertos(request):
+    """Saldo de cada mecânico. A pagar: mão de obra de OS que o cliente já pagou. Previsto: OS aberta ou pronta."""
+    zero = Decimal('0')
+    saldos = {}
+    for item in _mao_de_obra_a_acertar().select_related('mecanico', 'os'):
+        s = saldos.setdefault(item.mecanico, {'mecanico': item.mecanico, 'devido': zero, 'previsto': zero,
+                                              'servicos': 0})
+        s['devido' if item.os.status == OrdemServico.PAGA else 'previsto'] += item.parte_mecanico()
+        s['servicos'] += 1
+    for m in Mecanico.objects.filter(ativo=True):
+        saldos.setdefault(m, {'mecanico': m, 'devido': zero, 'previsto': zero, 'servicos': 0})
+    linhas = sorted(saldos.values(), key=lambda s: (-s['devido'], -s['previsto'], s['mecanico'].nome.lower()))
+    ultimos = PagamentoMecanico.objects.select_related('mecanico', 'criado_por').annotate(servicos=Count('itens'))[:10]
+    return render(request, 'core/acertos.html', {
+        'saldos': linhas, 'devido': sum((s['devido'] for s in linhas), zero),
+        'previsto': sum((s['previsto'] for s in linhas), zero), 'pagamentos': ultimos,
+    })
+
+
+@login_required
+def acerto_mecanico(request, pk):
+    mecanico = get_object_or_404(Mecanico, pk=pk)
+    itens = (_mao_de_obra_a_acertar().filter(mecanico=mecanico)
+             .select_related('mecanico', 'os__veiculo').order_by('os__pago_em', 'id'))
+
+    if request.method == 'POST':
+        # Só o que estava na tela e ainda está a pagar: se alguém acertou antes, não paga duas vezes.
+        escolhidos = list(itens.filter(os__status=OrdemServico.PAGA, pk__in=request.POST.getlist('itens')))
+        if not escolhidos:
+            messages.error(request, f'Nada a pagar para {mecanico}.')
+            return redirect('acerto_mecanico', mecanico.pk)
+        with transaction.atomic():
+            acerto = PagamentoMecanico.objects.create(mecanico=mecanico, data=timezone.localdate(),
+                                                      valor=_soma_mecanico(escolhidos), criado_por=request.user)
+            for item in escolhidos:  # um a um para cada serviço entrar no histórico de alterações
+                item.acerto = acerto
+                item.save()
+        messages.success(request, f'Pagamento de {brl(acerto.valor)} para {mecanico} registrado '
+                                  f'({len(escolhidos)} serviço(s)).')
+        return redirect('acerto_mecanico', mecanico.pk)
+
+    devidos = [i for i in itens if i.os.status == OrdemServico.PAGA]
+    previstos = [i for i in itens if i.os.status != OrdemServico.PAGA]
+    pagamentos = (mecanico.acertos.select_related('criado_por')
+                  .prefetch_related(Prefetch('itens', ItemOS.objects.select_related('os__veiculo', 'mecanico'))))
+    return render(request, 'core/acerto_mecanico.html', {
+        'mecanico': mecanico, 'devidos': devidos, 'previstos': previstos,
+        'devido': _soma_mecanico(devidos), 'previsto': _soma_mecanico(previstos), 'pagamentos': pagamentos,
     })
 
 

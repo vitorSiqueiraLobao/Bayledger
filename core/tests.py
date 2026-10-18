@@ -11,7 +11,8 @@ from django.test import TestCase as _TestCase, override_settings
 from django.utils import timezone
 from PIL import Image
 
-from .models import Cliente, ItemOS, Loja, Mecanico, Nota, OrdemServico, PagamentoLoja, Registro, Veiculo
+from .models import (Cliente, ItemOS, Loja, Mecanico, Nota, OrdemServico, PagamentoLoja, PagamentoMecanico, Registro,
+                     Veiculo)
 
 MEDIA = tempfile.mkdtemp()
 
@@ -504,6 +505,98 @@ class Faturamento(TestCase):
         self.assertContains(self.client.get('/'), 'href="/faturamento/"', count=2)
         self.client.logout()
         self.assertEqual(self.client.get('/faturamento/').status_code, 302)
+
+
+class AcertoComMecanico(TestCase):
+    def setUp(self):
+        self.atendente = User.objects.create_user('atendente', password='x')
+        self.client.force_login(self.atendente)
+        self.v = Veiculo.objects.create(placa='ABC1D23', modelo='Gol', cliente=Cliente.objects.create(nome='Ana'))
+        self.joao = Mecanico.objects.create(nome='João', percentual_dono_sozinho=30, percentual_dono_junto=50)
+        self.pedro = Mecanico.objects.create(nome='Pedro', percentual_dono_sozinho=20, percentual_dono_junto=40)
+        self.paga = self.nova_os(OrdemServico.PAGA)
+        self.s1 = self.servico(self.paga, '200', ItemOS.MECANICO, self.joao, 30)   # João 140
+        self.s2 = self.servico(self.paga, '90.01', ItemOS.AMBOS, self.joao, 50)    # João 45,01
+        self.servico(self.paga, '500', ItemOS.DONO)                                # só do dono
+        self.s3 = self.servico(self.paga, '100', ItemOS.MECANICO, self.pedro, 20)  # Pedro 80
+        self.aberta = self.nova_os(OrdemServico.ABERTA)
+        self.s4 = self.servico(self.aberta, '100', ItemOS.MECANICO, self.joao, 30)  # João 70 previsto
+        self.servico(self.nova_os(OrdemServico.CANCELADA), '999', ItemOS.MECANICO, self.joao, 30)  # não entra
+
+    def nova_os(self, status):
+        return OrdemServico.objects.create(veiculo=self.v, cliente=self.v.cliente, status=status,
+                                           pago_em=timezone.now() if status == OrdemServico.PAGA else None)
+
+    def servico(self, os_, preco, executor, mecanico=None, percentual=100):
+        return ItemOS.objects.create(os=os_, tipo=ItemOS.SERVICO, descricao='Serviço', quantidade=1,
+                                     preco_unitario=Decimal(preco), executor=executor, mecanico=mecanico,
+                                     percentual_dono=percentual)
+
+    def test_saldo_so_de_os_paga(self):
+        r = self.client.get('/mecanicos/')
+        self.assertEqual((r.context['devido'], r.context['previsto']), (Decimal('265.01'), Decimal('70')))
+        saldos = {s['mecanico'].nome: (s['devido'], s['previsto']) for s in r.context['saldos']}
+        self.assertEqual(saldos, {'João': (Decimal('185.01'), Decimal('70')), 'Pedro': (Decimal('80'), Decimal('0'))})
+
+        r = self.client.get(f'/mecanicos/{self.joao.pk}/')
+        self.assertEqual((r.context['devidos'], r.context['previstos']), ([self.s1, self.s2], [self.s4]))
+        self.assertEqual((r.context['devido'], r.context['previsto']), (Decimal('185.01'), Decimal('70')))
+        self.assertContains(r, 'Paguei R$ 185,01 a João')
+
+    def test_paguei_registra_acerto_e_zera_saldo(self):
+        r = self.client.post(f'/mecanicos/{self.joao.pk}/', {'itens': [self.s1.pk, self.s2.pk]})
+        self.assertRedirects(r, f'/mecanicos/{self.joao.pk}/')
+        a = PagamentoMecanico.objects.get()
+        self.assertEqual((a.mecanico, a.data, a.valor, a.criado_por),
+                         (self.joao, timezone.localdate(), Decimal('185.01'), self.atendente))
+        self.assertEqual(set(a.itens.all()), {self.s1, self.s2})
+        self.assertTrue(Registro.objects.filter(modelo='acerto com mecânico', usuario=self.atendente).exists())
+
+        r = self.client.get(f'/mecanicos/{self.joao.pk}/')
+        self.assertEqual((r.context['devido'], r.context['previsto']), (Decimal('0'), Decimal('70')))
+        self.assertContains(r, 'Nada a pagar agora')
+        self.assertNotContains(r, 'Paguei')
+        self.assertEqual(self.client.get('/mecanicos/').context['devido'], Decimal('80'))
+
+    def test_nao_paga_previsto_outro_mecanico_nem_duas_vezes(self):
+        self.client.post(f'/mecanicos/{self.joao.pk}/', {'itens': [self.s1.pk]})
+        self.client.post(f'/mecanicos/{self.joao.pk}/', {'itens': [self.s1.pk, self.s2.pk, self.s3.pk, self.s4.pk]})
+        segundo = PagamentoMecanico.objects.order_by('id').last()
+        self.assertEqual(list(segundo.itens.all()), [self.s2])
+        self.assertEqual(segundo.valor, Decimal('45.01'))
+
+        r = self.client.post(f'/mecanicos/{self.joao.pk}/', {'itens': [self.s4.pk]}, follow=True)
+        self.assertContains(r, 'Nada a pagar para João')
+        self.assertEqual(PagamentoMecanico.objects.count(), 2)
+
+    def test_previsto_entra_quando_o_cliente_paga(self):
+        self.aberta.status, self.aberta.pago_em = OrdemServico.PAGA, timezone.now()
+        self.aberta.save()
+        r = self.client.get(f'/mecanicos/{self.joao.pk}/')
+        self.assertEqual(r.context['devido'], Decimal('255.01'))
+
+    def test_historico(self):
+        self.client.post(f'/mecanicos/{self.joao.pk}/', {'itens': [self.s1.pk, self.s2.pk]})
+        self.client.post(f'/mecanicos/{self.pedro.pk}/', {'itens': [self.s3.pk]})
+        r = self.client.get(f'/mecanicos/{self.joao.pk}/')
+        self.assertEqual([p.valor for p in r.context['pagamentos']], [Decimal('185.01')])
+        self.assertContains(r, f'OS {self.paga.numero}')
+        self.assertContains(r, 'atendente')
+        r = self.client.get('/mecanicos/')
+        self.assertEqual(len(r.context['pagamentos']), 2)
+        self.assertContains(r, 'R$ 80,00')
+
+    def test_servico_acertado_nao_sai_da_os(self):
+        self.client.post(f'/mecanicos/{self.joao.pk}/', {'itens': [self.s1.pk]})
+        self.paga.status = OrdemServico.ABERTA
+        self.paga.save()
+        self.client.post(f'/os/{self.paga.pk}/item/{self.s1.pk}/remover/')
+        self.assertTrue(ItemOS.objects.filter(pk=self.s1.pk).exists())
+
+    def test_link_na_inicial_e_precisa_login(self):
+        self.assertContains(self.client.get('/'), 'href="/mecanicos/"', count=2)
+        self.client.logout()
+        self.assertEqual(self.client.get('/mecanicos/').status_code, 302)
 
 
 @override_settings(MEDIA_ROOT=MEDIA)
