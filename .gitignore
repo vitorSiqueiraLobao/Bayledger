@@ -13,6 +13,7 @@ media/
 # Your configuration (copy the *.example files and edit the copies)
 .env
 deploy/deploy.env
+deploy/servidor.env
 
 # Personal tooling and notes
 .claude/

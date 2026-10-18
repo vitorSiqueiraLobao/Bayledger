@@ -92,18 +92,24 @@ To restore: download the latest `db-YYYYMMDD.sqlite3.gz`, gunzip it to `~/oficin
 
 ## 6. Day to day, from your computer
 
-The three scripts need to know where the server is. Create `deploy/deploy.env` (git-ignored, never sent to the server):
+The scripts need to know where the server is, and what your shop's settings are. Create two git-ignored files (neither is ever sent as code):
 
 ```bash
-cp deploy/deploy.env.example deploy/deploy.env       # set OFICINA_HOST and OFICINA_URL
+cp deploy/deploy.env.example deploy/deploy.env       # OFICINA_HOST and OFICINA_URL: where the server is
+cp deploy/servidor.env.example deploy/servidor.env   # your shop's settings, pushed to the server's oficina.env
 ```
 
 Your computer needs key-based SSH access to `OFICINA_HOST`. Then:
 
 ```bash
-deploy/deploy.sh             # runs the tests, backs up the database on the server, sends the code, restarts, checks health
+deploy/deploy.sh             # runs the tests, backs up the database on the server, sends the code, applies servidor.env, restarts, checks health
+deploy/deploy.sh --env       # only applies servidor.env and restarts (for a config change, no code)
 deploy/deploy.sh --voltar    # rolls back to the previous version
 deploy/puxar-backup.sh       # pulls database + photos + oficina.env to ~/backups/oficina (keeps the last 30)
 ```
 
-`deploy.sh` replaces the code folder but never touches `~/oficina-dados`, and it does not send `.env`, `deploy/deploy.env`, `.git`, the database or the photos. Server settings stay in the server's own `oficina.env`, so **when a new version adds a setting, add it there before deploying**.
+`deploy.sh` replaces the code folder but never touches `~/oficina-dados`, and it does not send `.env`, `deploy/deploy.env`, `deploy/servidor.env`, `.git`, the database or the photos.
+
+**The server keeps its own `oficina.env`** (the one from step 2, with the secret key and the data folder). On each deploy `deploy/sincronizar_env.py` copies into it the keys listed in `servidor.env`, so a setting added by a new version reaches the server without editing it by hand. It only touches `OFICINA_*` keys (except `OFICINA_DATA_DIR`) and `DJANGO_TIME_ZONE`, it ignores empty values, and it keeps the previous file as `oficina.env.anterior`. The secret key, domain and data folder are never changed from your computer.
+
+`--voltar` goes back to the previous code but does **not** undo database migrations. If the new version changed the database, run `manage.py migrate core <previous migration>` on the server first, or restore the backup the deploy took.
