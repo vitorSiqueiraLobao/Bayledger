@@ -1,0 +1,27 @@
+{% extends 'core/base.html' %}
+{% load formatos icones %}
+{% block titulo %}{{ veiculo.placa }}{% endblock %}
+{% block conteudo %}
+<h1>{{ veiculo.placa }} · {{ veiculo.marca }} {{ veiculo.modelo }} {{ veiculo.ano }}</h1>
+<div class="cartao">
+  <strong>{{ veiculo.cliente.nome }}</strong><br>
+  <span class="ajuda">{{ veiculo.cliente.telefone|default:"sem telefone" }}</span>
+</div>
+
+<a class="botao grande" href="{% url 'nova_os_veiculo' veiculo.pk %}">{% icone "mais" %} Nova OS para este carro</a>
+
+<h2>Histórico do carro</h2>
+<div class="cartao">
+  <ul class="lista">
+  {% for o in ordens %}
+    <li><a class="linha-os" href="{% url 'os' o.pk %}">
+      <span><strong>{{ o.criado_em|date:"d/m/Y" }}</strong>{% if o.km %} · {{ o.km }} km{% endif %}<br>
+        <span class="sub">{% for i in o.itens.all|slice:":4" %}{{ i.descricao }}{% if not forloop.last %}, {% endif %}{% endfor %}{% if o.itens.all|length > 4 %}…{% endif %}</span></span>
+      <span style="text-align:right">{{ o.total|brl }}<br><span class="etiqueta {{ o.status }}">{{ o.get_status_display }}</span></span>
+    </a></li>
+  {% empty %}
+    <li class="vazio">Nenhuma OS ainda.</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endblock %}

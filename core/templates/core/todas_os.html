@@ -1,0 +1,43 @@
+{% extends 'core/base.html' %}
+{% load formatos icones %}
+{% block titulo %}Todas as OS{% endblock %}
+{% block conteudo %}
+<h1>Todas as OS</h1>
+<form method="get" class="cartao">
+  {% if antigas_primeiro %}<input type="hidden" name="ordem" value="antigas">{% endif %}
+  {% include 'core/_campo.html' with campo=form.q %}
+  {% include 'core/_campo.html' with campo=form.status %}
+  <div class="datas">
+    {% include 'core/_campo.html' with campo=form.de %}
+    {% include 'core/_campo.html' with campo=form.ate %}
+  </div>
+  <br><button class="botao">{% icone "busca" %} Buscar</button>
+  {% if tem_filtro %}<a href="{% url 'todas_os' %}{% if antigas_primeiro %}?ordem=antigas{% endif %}">limpar filtros</a>{% endif %}
+</form>
+
+<div class="barra-lista">
+  <span class="ajuda">{{ pagina.paginator.count }} OS encontrada(s){% if form.de.value or form.ate.value %} · período pela data de abertura{% endif %}</span>
+  <a class="botao secundario pequeno" href="?{{ inverter }}">{% if antigas_primeiro %}↑ Antigas primeiro{% else %}↓ Novas primeiro{% endif %}</a>
+</div>
+<div class="cartao">
+  <ul class="lista">
+  {% for o in pagina %}
+    <li><a class="linha-os" href="{% url 'os' o.pk %}">
+      <span><strong>{{ o.veiculo.placa }}</strong> · {{ o.veiculo.modelo }}<br>
+        <span class="sub">OS {{ o.numero }} · {{ o.cliente.nome }} · {{ o.criado_em|date:"d/m/Y" }}</span></span>
+      <span class="valor">{{ o.valor|default:0|brl }}<br><span class="etiqueta {{ o.status }}">{{ o.get_status_display }}</span></span>
+    </a></li>
+  {% empty %}
+    <li class="vazio">Nenhuma OS encontrada.</li>
+  {% endfor %}
+  </ul>
+</div>
+
+{% if pagina.has_other_pages %}
+<div class="botoes-lado">
+  {% if pagina.has_previous %}<a class="botao secundario" href="?{% if filtros %}{{ filtros }}&amp;{% endif %}pagina={{ pagina.previous_page_number }}">← Anteriores</a>{% else %}<span></span>{% endif %}
+  {% if pagina.has_next %}<a class="botao secundario" href="?{% if filtros %}{{ filtros }}&amp;{% endif %}pagina={{ pagina.next_page_number }}">Próximas →</a>{% endif %}
+</div>
+<p class="ajuda" style="text-align:center">Página {{ pagina.number }} de {{ pagina.paginator.num_pages }}</p>
+{% endif %}
+{% endblock %}

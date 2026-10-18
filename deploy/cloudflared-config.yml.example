@@ -1,0 +1,8 @@
+# Copy to ~/.cloudflared/config.yml and replace the tunnel ID, user and domain.
+tunnel: TUNNEL_ID
+credentials-file: /Users/YOUR_USER/.cloudflared/TUNNEL_ID.json
+
+ingress:
+  - hostname: oficina.example.com
+    service: http://localhost:8000
+  - service: http_status:404

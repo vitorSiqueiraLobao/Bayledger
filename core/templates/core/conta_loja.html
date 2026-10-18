@@ -1,0 +1,75 @@
+{% extends 'core/base.html' %}
+{% load formatos icones %}
+{% block titulo %}{{ loja }}{% endblock %}
+{% block conteudo %}
+<h1>{{ loja }}</h1>
+<div class="cartao totais">
+  <div class="principal"><span>Devido agora</span><span>{{ devido|brl }}</span></div>
+  <div><span>Previsto</span><span>{{ previsto|brl }}</span></div>
+  <div class="ganho"><span>Taxa de comodidade</span><span>{{ comodidade|brl }}</span></div>
+</div>
+{% if sem_nota %}<div class="aviso alerta">{{ sem_nota }} peça(s) sem foto da nota.</div>{% endif %}
+
+{% if devidos or previstos %}
+<p class="ajuda">Marque as peças que você está pagando à loja agora e toque no botão verde.
+  Confira com a conta da loja.</p>
+<form method="post" id="baixa" onsubmit="return confirm('Registrar o pagamento das peças marcadas?')">{% csrf_token %}
+  <h2>Devido agora</h2>
+  <div class="cartao">
+    <ul class="lista">
+    {% for i in devidos %}{% include 'core/_peca_loja.html' with marcada=True %}
+    {% empty %}<li class="vazio">Nada de OS já paga pelo cliente.</li>{% endfor %}
+    </ul>
+  </div>
+  {% if previstos %}
+  <h2>Previsto</h2>
+  <p class="ajuda">OS ainda aberta ou pronta: o cliente ainda não pagou. Pode marcar se já for pagar a loja.</p>
+  <div class="cartao">
+    <ul class="lista">
+    {% for i in previstos %}{% include 'core/_peca_loja.html' with marcada=False %}{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  <button class="botao verde" id="botao-baixa"{% if not devidos %} disabled{% endif %}>{% icone "dinheiro" %}
+    <span id="valor-baixa">{% if devidos %}Paguei {{ devido|brl }}{% else %}Marque as peças pagas{% endif %}</span></button>
+</form>
+<script>
+(function () {
+  var form = document.getElementById('baixa'), saida = document.getElementById('valor-baixa'),
+      botao = document.getElementById('botao-baixa');
+  form.addEventListener('change', function () {
+    var marcadas = form.querySelectorAll('input[name=itens]:checked'), soma = 0;
+    marcadas.forEach(function (c) { soma += parseFloat(c.dataset.valor); });
+    botao.disabled = marcadas.length === 0;
+    saida.textContent = marcadas.length
+      ? 'Paguei ' + soma.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'}) : 'Marque as peças pagas';
+  });
+})();
+</script>
+{% else %}
+<div class="cartao"><p class="vazio">Nenhuma peça em aberto com essa loja.</p></div>
+{% endif %}
+
+<h2>Pagamentos feitos</h2>
+<div class="cartao">
+  <ul class="lista">
+  {% for p in pagamentos %}
+    <li><details class="pagamento">
+      <summary class="item"><span class="desc"><strong>{{ p.data|date:"d/m/Y" }}</strong><br>
+        <span class="sub">{{ p.itens.all|length }} peça(s){% if p.criado_por %} · {{ p.criado_por }}{% endif %}</span></span>
+        <span class="valor">{{ p.valor|brl }}</span></summary>
+      <ul class="lista">
+      {% for i in p.itens.all %}
+        <li class="item"><span class="desc">{{ i.quantidade|qtd }}× {{ i.descricao }}<br>
+          <span class="sub"><a href="{% url 'os' i.os_id %}">OS {{ i.os.numero }}</a> · {{ i.os.veiculo.placa }}
+            <br>cobrado {{ i.total|brl }} · <span class="ganho">comodidade {{ i.comodidade|brl }}</span></span></span>
+          <span class="valor">{{ i.custo_total|brl }}</span></li>
+      {% endfor %}
+      </ul>
+    </details></li>
+  {% empty %}
+    <li class="vazio">Nenhum pagamento registrado.</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endblock %}

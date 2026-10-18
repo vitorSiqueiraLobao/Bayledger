@@ -1,0 +1,32 @@
+{% load formatos %}<!doctype html>
+<html lang="pt-br"><head><meta charset="utf-8"><title>OS {{ os.numero }} – {{ os.veiculo.placa }}</title>
+<style>
+  body { font-family: Arial, sans-serif; font-size: 13px; color: #000; max-width: 780px; margin: 20px auto; padding: 0 16px; }
+  h1 { font-size: 18px; margin: 0; } .topo { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 8px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; } th, td { border: 1px solid #888; padding: 6px; text-align: left; }
+  td.n, th.n { text-align: right; white-space: nowrap; } .dados td { border: 0; padding: 3px 0; }
+  .total td { font-weight: bold; font-size: 15px; } .assin { margin-top: 48px; display: flex; gap: 40px; }
+  .assin div { flex: 1; border-top: 1px solid #000; text-align: center; padding-top: 4px; }
+  @media print { .nao-imprimir { display: none; } body { margin: 0; } }
+</style></head>
+<body>
+<p class="nao-imprimir"><button onclick="window.print()">Imprimir</button></p>
+<div class="topo"><div><h1>{{ oficina }}</h1>Solicitação de serviços e peças</div>
+  <div style="text-align:right"><strong style="font-size:18px">OS {{ os.numero }}</strong><br>{{ os.criado_em|date:"d/m/Y" }}</div></div>
+<table class="dados">
+  <tr><td><strong>Cliente:</strong> {{ os.cliente.nome }}</td><td><strong>Telefone:</strong> {{ os.cliente.telefone }}</td></tr>
+  <tr><td><strong>Veículo:</strong> {{ os.veiculo.marca }} {{ os.veiculo.modelo }} {{ os.veiculo.ano }}</td>
+      <td><strong>Placa:</strong> {{ os.veiculo.placa }} &nbsp; <strong>Km:</strong> {{ os.km|default:"" }}</td></tr>
+  {% if os.pedido %}<tr><td colspan="2"><strong>Solicitação:</strong> {{ os.pedido }}</td></tr>{% endif %}
+</table>
+<table>
+  <tr><th class="n">Qtd</th><th>Descrição</th><th class="n">Unit.</th><th class="n">Valor</th></tr>
+  {% for i in itens %}
+  <tr><td class="n">{{ i.quantidade|qtd }}</td><td>{{ i.descricao }}{% if i.origem == 'cliente' %} (peça do cliente){% endif %}</td>
+      <td class="n">{{ i.preco_unitario|brl }}</td><td class="n">{{ i.total|brl }}</td></tr>
+  {% endfor %}
+  <tr class="total"><td colspan="3">TOTAL À VISTA</td><td class="n">{{ os.total|brl }}</td></tr>
+  <tr><td colspan="3">Total no cartão</td><td class="n">{{ os.total_cartao|brl }}</td></tr>
+</table>
+<div class="assin"><div>Oficina</div><div>Cliente</div></div>
+</body></html>

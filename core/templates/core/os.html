@@ -1,0 +1,112 @@
+{% extends 'core/base.html' %}
+{% load formatos icones %}
+{% block titulo %}OS {{ os.numero }}{% endblock %}
+{% block conteudo %}
+<h1>OS {{ os.numero }} <span class="etiqueta {{ os.status }}">{{ os.get_status_display }}</span></h1>
+<div class="cartao">
+  <a href="{% url 'veiculo' os.veiculo.pk %}"><strong>{{ os.veiculo.placa }}</strong></a>
+  · {{ os.veiculo.marca }} {{ os.veiculo.modelo }}{% if os.km %} · {{ os.km }} km{% endif %}<br>
+  {{ os.cliente.nome }} <span class="ajuda">{{ os.cliente.telefone }}</span>
+  {% if os.pedido %}<p class="ajuda" style="margin-bottom:0"><strong>Pedido:</strong> {{ os.pedido|linebreaksbr }}</p>{% endif %}
+  {% if os.status == 'cancelada' %}<p class="erro">Cancelada: {{ os.motivo_cancelamento }}</p>{% endif %}
+  {% if os.status == 'paga' %}<p class="ajuda">Paga em {{ os.pago_em|date:"d/m/Y H:i" }} · {{ os.get_forma_pagamento_display }}</p>{% endif %}
+</div>
+
+{% if os.editavel %}
+<div class="botoes-lado">
+  <a class="botao" href="{% url 'adicionar_peca' os.pk %}">{% icone "mais" %} Peça</a>
+  <a class="botao" href="{% url 'adicionar_servico' os.pk %}">{% icone "mais" %} Mão de obra</a>
+</div>
+{% endif %}
+
+<h2>Peças</h2>
+<div class="cartao">
+  <ul class="lista">
+  {% for i in pecas %}
+    <li class="item">
+      <div class="desc"><strong>{{ i.quantidade|qtd }}× {{ i.descricao }}</strong><br>
+        <span class="sub">{{ i.get_origem_display }}{% if i.loja %} · {{ i.loja }}{% endif %}
+          {% if i.nota %} · {% icone "camera" %} nota{% elif i.origem == 'fiado' %} · <span class="erro">sem foto da nota</span>{% endif %}
+          {% if i.pagamento_id %} · paga à loja{% endif %}</span>
+        {% if os.editavel and not i.pagamento_id %}
+        <form method="post" action="{% url 'remover_item' os.pk i.pk %}" onsubmit="return confirm('Tirar {{ i.descricao|escapejs }} da OS?')">{% csrf_token %}<button>remover</button></form>
+        {% endif %}
+      </div>
+      <div class="valor">{{ i.total|brl }}</div>
+    </li>
+  {% empty %}<li class="vazio">Nenhuma peça.</li>{% endfor %}
+  </ul>
+</div>
+
+<h2>Mão de obra</h2>
+<div class="cartao">
+  <ul class="lista">
+  {% for i in servicos %}
+    <li class="item">
+      <div class="desc"><strong>{{ i.descricao }}</strong><br>
+        <span class="sub">{% if i.executor %}{{ i.get_executor_display }}{% else %}<span class="erro">quem fez não informado</span>{% endif %}</span>
+        {% if os.editavel %}
+        <form method="post" action="{% url 'remover_item' os.pk i.pk %}" onsubmit="return confirm('Tirar {{ i.descricao|escapejs }} da OS?')">{% csrf_token %}<button>remover</button></form>
+        {% endif %}
+      </div>
+      <div class="valor">{{ i.total|brl }}</div>
+    </li>
+  {% empty %}<li class="vazio">Nenhum serviço.</li>{% endfor %}
+  </ul>
+  {% if divisao %}
+  <div class="totais divisao">
+    <div><span>Fica com {{ nome_dono }}</span><span>{{ divisao.dono|brl }}</span></div>
+    <div><span>Fica com {{ nome_mecanico }}</span><span>{{ divisao.mecanico|brl }}</span></div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="cartao totais">
+  <div class="principal"><span>À vista</span><span>{{ os.total|brl }}</span></div>
+  <div><span>No cartão</span><span>{{ os.total_cartao|brl }}</span></div>
+</div>
+
+{% if os.status != 'cancelada' %}
+<div class="botoes-lado">
+  <a class="botao verde" href="{{ whatsapp }}" target="_blank" rel="noopener">{% icone "conversa" %} WhatsApp</a>
+  <a class="botao secundario" href="{% url 'imprimir_os' os.pk %}" target="_blank">{% icone "impressora" %} Imprimir</a>
+</div>
+<br>
+{% endif %}
+
+{% if os.status == 'aberta' %}
+  <form method="post" action="{% url 'mudar_status' os.pk %}">{% csrf_token %}
+    <button class="botao secundario" name="acao" value="finalizar">{% icone "ok" %} Carro pronto (falta pagar)</button>
+  </form>
+{% endif %}
+
+{% if os.status == 'aberta' or os.status == 'finalizada' %}
+  <form method="post" action="{% url 'mudar_status' os.pk %}" class="cartao">{% csrf_token %}
+    <span class="rotulo" style="margin-top:0">{{ pagar_form.forma_pagamento.label }}</span>
+    <div class="opcoes">{% for r in pagar_form.forma_pagamento %}{{ r }}{% endfor %}</div>
+    <br><button class="botao verde" name="acao" value="pagar">{% icone "dinheiro" %} Cliente pagou</button>
+  </form>
+{% endif %}
+
+{% if os.status == 'finalizada' %}
+  <form method="post" action="{% url 'mudar_status' os.pk %}">{% csrf_token %}
+    <button class="botao secundario" name="acao" value="reabrir">{% icone "lapis" %} Reabrir para mexer</button>
+  </form>
+{% elif os.status == 'paga' or os.status == 'cancelada' %}
+  {% if user.is_staff %}
+  <form method="post" action="{% url 'mudar_status' os.pk %}" onsubmit="return confirm('Reabrir esta OS? Fica registrado no histórico.')">{% csrf_token %}
+    <button class="botao secundario" name="acao" value="reabrir">{% icone "lapis" %} Reabrir (só o dono)</button>
+  </form>
+  {% endif %}
+{% endif %}
+
+{% if os.status != 'cancelada' %}{% if os.status != 'paga' or user.is_staff %}
+<details>
+  <summary>Cancelar esta OS</summary>
+  <form method="post" action="{% url 'mudar_status' os.pk %}">{% csrf_token %}
+    {% include 'core/_campo.html' with campo=cancelar_form.motivo %}
+    <br><button class="botao perigo" name="acao" value="cancelar">Cancelar OS</button>
+  </form>
+</details>
+{% endif %}{% endif %}
+{% endblock %}

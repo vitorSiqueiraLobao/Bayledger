@@ -1,0 +1,168 @@
+# Oficina
+
+A small web app for running an auto repair shop from a phone: open a work order (OS) by license plate, log parts and labor, keep track of what the shop owes its parts suppliers (with a photo of every receipt), see how much money came in, and keep an untouchable history of every change.
+
+It is a Django project with server-rendered pages and almost no JavaScript, so it runs fine on a cheap phone over a slow connection. Data lives in a single SQLite file plus a folder of photos, which makes backups trivial.
+
+> **Status:** early and simple. It was written quickly, with a lot of AI assistance, for one small shop, and has a test suite (`manage.py test core`) but no security audit. Read the code before trusting it with real money, and keep backups.
+>
+> **Language and locale:** the interface is in Brazilian Portuguese, money is in R$ and customer phone numbers are turned into WhatsApp links with the Brazil country code (configurable). Code identifiers are Portuguese too; the glossary below maps the main ones.
+
+## What it does
+
+| | |
+|---|---|
+| **Work orders** | Start from the plate: a known car opens its history, a new one asks for make/model/customer. Each OS has parts, labor, mileage and what the customer asked for. |
+| **Parts and labor** | Parts record where they came from (store on credit, store paid on the spot, internet, customer brought it, shop stock), the price charged to the customer and the cost at the store. Labor records who did it. |
+| **Store accounts ("fiado")** | Parts bought on credit are tracked per store. *Owed now* = the customer already paid; *expected* = the OS is still open. Pay a store by ticking the parts you are settling; every payment is kept as a record. |
+| **Receipt photos** | The part form opens the phone camera. Photos are resized (long side 2560 px, JPEG), stripped of GPS/EXIF and stored under `media/notas/`. One paper = one photo: a receipt taken in the last 7 days can be reused for other parts, with a full-screen viewer to flip through them. |
+| **Revenue** | Totals for today / this week / this month / custom dates, by payment method, parts vs. labor, the markup on parts, the labor split between owner and mechanic, and the owner's result. |
+| **Print and WhatsApp** | A print-friendly page per OS (it does not show the labor split) and a pre-filled WhatsApp message with the cash and card totals. |
+| **Search** | Every OS ever made, by number, plate, customer or car, filterable by status and dates. |
+| **Audit trail** | Every create, update and delete of the important models is stored with user, time and before/after values. Nobody can edit it, not even through the admin. |
+| **Export** | `/exportar/itens.csv` (owner only) dumps every line item for analysis in a spreadsheet. |
+
+### How an OS moves
+
+```
+aberta (open, editable) ──► finalizada ("ready, waiting for payment") ──► paga (paid)
+        │                          │                                         │
+        └──────────────────────────┴──────────► cancelada (needs a reason) ◄──┘
+```
+
+- An open OS can also be paid directly, and a finalized one can be reopened by anyone.
+- An OS is **never deleted**, only cancelled with a reason. Numbers are sequential with no gaps.
+- Items can only be added or removed while the OS is open. A part already paid to its store cannot be removed.
+- Anyone logged in can finalize, pay or cancel an unpaid OS. Reopening or cancelling a **paid** OS, and reopening a cancelled one, is only for the owner (`is_staff`).
+
+### Money rules
+
+- **Cash price** is the sum of items. **Card price** is cash × `OFICINA_ACRESCIMO_CARTAO` (default 1.10).
+- **Convenience fee** (*taxa de comodidade*) = what the customer paid for parts − what the store charged. It goes entirely to the owner.
+- **Labor split**: each labor line says who did it (owner, mechanic or both) and is split with the fractions below; the mechanic gets the remainder so cents never disappear.
+
+  | Done by | Owner gets (default) | Setting |
+  |---|---|---|
+  | Owner | 100% | fixed |
+  | Mechanic alone | 30% | `OFICINA_PARTE_DONO_MECANICO` |
+  | Both | 50% | `OFICINA_PARTE_DONO_AMBOS` |
+
+- **Owner's result** = owner's share of the labor + convenience fee. Only paid OS count, by payment date, at the cash price.
+
+### Users and permissions
+
+There are no custom roles, only Django's:
+
+- **Owner** = a staff user (the superuser you create at install time). Can open the admin panel at `/painel/`, reopen/cancel paid OS, export the CSV, and sees the audit history.
+- **Employees** = any other user. Can do everything day to day (orders, parts, store payments, revenue screen) but not the owner-only actions above. Create them in `/painel/` → *Users* → *Add*, leaving *Staff status* unchecked.
+
+Everything except the login page requires a login, including the receipt photos (`/media/` goes through a login-protected view). Wrong passwords lock a user out for 15 minutes after 5 attempts, and an IP after 20, in both the app and the admin panel. Sessions last 60 days so nobody has to log in again on the phone all the time.
+
+## Quick start
+
+Requires Python 3.10 or newer.
+
+```bash
+git clone https://github.com/vitorSiqueiraLobao/crm-oficina.git
+cd crm-oficina
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env                       # optional: your shop's name, labor split, ...
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py createsuperuser # this is the owner
+.venv/bin/python manage.py semear_demo     # optional: demo orders in every status
+.venv/bin/python manage.py runserver
+```
+
+Open <http://localhost:8000>. `manage.py semear_demo --apagar` removes only the demo data. A fresh database starts empty.
+
+Run the tests with `.venv/bin/python manage.py test core`. They fix their own configuration, so your `.env` does not affect them.
+
+## Configuration
+
+Nothing about a specific shop is hard-coded. Settings come from environment variables, read from a git-ignored `.env` in the project folder (development) or from the environment itself (production, see [deploy/README.md](deploy/README.md)). A variable that is already in the environment always wins over `.env`. All of them are optional in development.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `OFICINA_NOME` | `Minha Oficina` | Shop name on the printed OS and the WhatsApp message. |
+| `OFICINA_NOME_DONO` | `Dono` | Owner's name as shown on screen (what is stored is the role `dono`). |
+| `OFICINA_NOME_MECANICO` | `Mecânico` | Mechanic's name as shown on screen (stored as `mecanico`). |
+| `OFICINA_PARTE_DONO_MECANICO` | `0.30` | Owner's fraction of labor done by the mechanic alone (0 to 1). |
+| `OFICINA_PARTE_DONO_AMBOS` | `0.50` | Owner's fraction of labor done by both. |
+| `OFICINA_ACRESCIMO_CARTAO` | `1.10` | Card multiplier over the cash price. |
+| `OFICINA_DDI` | `55` | Country code prepended to customer phones for the WhatsApp link. |
+| `OFICINA_CLOUDFLARE` | `0` | `1` only behind Cloudflare: trust `CF-Connecting-IP` as the client IP for the login lockout. Anywhere else that header can be forged. |
+| `OFICINA_DATA_DIR` | project folder | Where `db.sqlite3`, `media/` and `cache/` live. Point it outside the code in production. |
+| `OFICINA_BACKUP_REMOTO` | empty | `rclone` destination for the off-site backup (production). |
+| `DJANGO_DEBUG` | `1` | `0` in production. |
+| `DJANGO_SECRET_KEY` | dev key when debugging | Required when `DJANGO_DEBUG=0`. |
+| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated hosts; each non-local one is also added to `CSRF_TRUSTED_ORIGINS` as `https://host`. |
+| `DJANGO_TIME_ZONE` | `America/Sao_Paulo` | Time zone for dates and "today". |
+
+With `DJANGO_DEBUG=0` the app assumes HTTPS is terminated by a proxy in front of it (secure cookies, `X-Forwarded-Proto`). Plain HTTP in production mode will not let you log in.
+
+Things that are code constants rather than settings: the payment methods, order statuses and part origins (`core/models.py`), the 7-day window for reusing receipt photos (`NOTAS_DIAS` in `core/views.py`), photo size/quality (`FOTO_NOTA_*` in `config/settings.py`) and the login lockout limits (`core/login.py`).
+
+## Endpoints
+
+| Path | What |
+|---|---|
+| `/` | Home: plate lookup and cars currently in the shop |
+| `/entrar/`, `/sair/` | Log in / out |
+| `/placa/?placa=ABC1D23` | Plate lookup: known car → its page, new car → new OS form |
+| `/carro/<id>/`, `/carro/<id>/nova-os/` | A car and its history, new OS for it |
+| `/os/`, `/os/nova/` | Search all OS, new OS for a new car |
+| `/os/<id>/` | One OS: items, split, totals, actions |
+| `/os/<id>/peca/`, `/os/<id>/servico/` | Add a part / a labor line |
+| `/os/<id>/item/<item>/remover/`, `/os/<id>/status/` | POST: remove an item; finalize, pay, reopen, cancel |
+| `/os/<id>/imprimir/` | Printable OS |
+| `/lojas/`, `/lojas/<id>/` | Store accounts; settle a store (POST) |
+| `/faturamento/` | Revenue |
+| `/exportar/itens.csv` | CSV of every line item (owner only) |
+| `/media/<path>` | Receipt photos (login required) |
+| `/painel/` | Django admin: data, photos, audit history (owner only) |
+
+## Project layout
+
+```
+config/            Django settings, URLs, WSGI
+core/
+  models.py        Cliente, Veiculo, Loja, Nota, PagamentoLoja, OrdemServico, ItemOS, Registro
+  views.py         All the screens
+  forms.py         Forms and validation
+  audit.py         Signals + middleware that fill the audit trail (Registro)
+  login.py         Login lockout
+  imagens.py       Receipt photo resizing
+  management/      `semear_demo` command
+  templates/ static/ templatetags/
+deploy/            Scripts to run it on a small always-on machine (see deploy/README.md)
+.env.example       Development settings model
+```
+
+### Glossary
+
+| Portuguese | English |
+|---|---|
+| OS (*ordem de serviço*) | Work order / repair order |
+| Peça | Part |
+| Mão de obra, serviço | Labor |
+| Loja | Parts store (supplier) |
+| Fiado | Buying on credit / a tab |
+| Nota | The paper receipt the store hands over with the parts |
+| Placa | License plate |
+| Dono | Owner |
+| Taxa de comodidade | Convenience fee (markup on parts) |
+| Faturamento | Revenue |
+| Registro | Audit-trail entry |
+
+## Running it for real
+
+[deploy/README.md](deploy/README.md) describes a setup that has worked for a small shop: an always-on Mac, gunicorn under launchd, a Cloudflare Tunnel for HTTPS without opening router ports, a daily database backup, and one-command deploy/rollback/backup scripts. The scripts read your server address from `deploy/deploy.env` (git-ignored; model in `deploy/deploy.env.example`), so nothing about your machines is in the repository.
+
+## License
+
+[PolyForm Internal Use License 1.0.0](LICENSE). In plain words: you may use and modify this software to run **your own business** (your own workshop). You may **not** distribute it (not even for free), sublicense it, sell it, offer it as a service to other businesses, or build a product on top of it. The text in [LICENSE](LICENSE) is what counts.
+
+This is a *source-available* license, not an OSI-approved open-source one. If you want to do something it does not allow (for example, offer the app to other shops), contact the author.
+
+The inline icons are from [Lucide](https://lucide.dev) and keep their own license (ISC).

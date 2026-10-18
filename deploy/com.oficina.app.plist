@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- LaunchDaemon: sobe junto com o Mac, mesmo sem ninguém logado, e reinicia se cair. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.oficina.app</string>
+  <key>UserName</key><string>YOUR_USER</string>
+  <key>ProgramArguments</key>
+  <array><string>/Users/YOUR_USER/oficina/deploy/rodar.sh</string></array>
+  <key>EnvironmentVariables</key>
+  <dict><key>HOME</key><string>/Users/YOUR_USER</string></dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/YOUR_USER/oficina-dados/logs/app.log</string>
+  <key>StandardErrorPath</key><string>/Users/YOUR_USER/oficina-dados/logs/app.log</string>
+</dict>
+</plist>

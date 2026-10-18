@@ -1,0 +1,16 @@
+{% extends 'core/base.html' %}
+{% block titulo %}Nova OS{% endblock %}
+{% block conteudo %}
+{% if veiculo %}
+  <h1>Nova OS · {{ veiculo.placa }}</h1>
+  <p>{{ veiculo.marca }} {{ veiculo.modelo }} · {{ veiculo.cliente.nome }}</p>
+{% else %}
+  <h1>Carro novo</h1>
+  <p class="ajuda">Essa placa ainda não está cadastrada. Preencha uma vez só; nas próximas o sistema já lembra.</p>
+{% endif %}
+<form method="post" class="cartao">{% csrf_token %}
+  {{ form.non_field_errors }}
+  {% for campo in form %}{% include 'core/_campo.html' %}{% endfor %}
+  <br><button class="botao grande">Abrir OS</button>
+</form>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends 'core/base.html' %}
+{% load formatos icones %}
+{% block titulo %}Faturamento{% endblock %}
+{% block conteudo %}
+<h1>Faturamento</h1>
+<nav class="periodos">
+  <a class="botao secundario pequeno{% if periodo == 'hoje' %} ativo{% endif %}" href="?periodo=hoje">Hoje</a>
+  <a class="botao secundario pequeno{% if periodo == 'semana' %} ativo{% endif %}" href="?periodo=semana">Semana</a>
+  <a class="botao secundario pequeno{% if periodo == 'mes' %} ativo{% endif %}" href="?periodo=mes">Mês</a>
+</nav>
+<details class="cartao"{% if periodo == 'livre' %} open{% endif %}>
+  <summary>Escolher datas</summary>
+  <form method="get">
+    <input type="hidden" name="periodo" value="livre">
+    <div class="datas">
+      {% include 'core/_campo.html' with campo=form.de %}
+      {% include 'core/_campo.html' with campo=form.ate %}
+    </div>
+    <br><button class="botao">{% icone "busca" %} Ver período</button>
+  </form>
+</details>
+
+<p class="ajuda">{% if de == ate %}{{ de|date:"d/m/Y" }}{% else %}{{ de|date:"d/m/Y" }} a {{ ate|date:"d/m/Y" }}{% endif %}
+  · {{ ordens|length }} OS paga(s). Conta só OS paga, pela data do pagamento, com o valor à vista.</p>
+
+<div class="cartao totais">
+  <div class="principal"><span>Total recebido</span><span>{{ recebido|brl }}</span></div>
+  {% for f in formas %}
+  <div><span>{{ f.nome }} <span class="sub">· {{ f.os }} OS</span></span><span>{{ f.total|brl }}</span></div>
+  {% if f.maquininha %}<div class="sub"><span>cobrado na maquininha (com acréscimo)</span><span>{{ f.maquininha|brl }}</span></div>{% endif %}
+  {% endfor %}
+</div>
+
+<h2>Peças x mão de obra</h2>
+<div class="cartao totais">
+  <div><span>Peças (cobrado do cliente)</span><span>{{ pecas|brl }}</span></div>
+  <div><span>Custo das peças nas lojas</span><span>{{ custo_pecas|brl }}</span></div>
+  <div class="ganho"><span>Taxa de comodidade</span><span>{{ comodidade|brl }}</span></div>
+</div>
+<div class="cartao totais">
+  <div><strong>Mão de obra</strong><strong>{{ servicos|brl }}</strong></div>
+  <div><span>Parte de {{ nome_dono }}</span><span>{{ mao_de_obra.dono|brl }}</span></div>
+  <div><span>Parte de {{ nome_mecanico }}</span><span>{{ mao_de_obra.mecanico|brl }}</span></div>
+  {% if mao_de_obra.sem_executor %}<div class="erro"><span>Sem quem fez informado</span><span>{{ mao_de_obra.sem_executor|brl }}</span></div>{% endif %}
+</div>
+
+<div class="cartao totais">
+  <div class="principal ganho"><span>Resultado de {{ nome_dono }}</span><span>{{ resultado_dono|brl }}</span></div>
+  <p class="ajuda">Parte do dono na mão de obra + taxa de comodidade das peças.</p>
+</div>
+
+{% if ordens %}
+<h2>OS pagas no período</h2>
+<div class="cartao">
+  <ul class="lista">
+  {% for o in ordens %}
+    <li><a class="linha-os" href="{% url 'os' o.pk %}">
+      <span><strong>{{ o.veiculo.placa }}</strong> · {{ o.veiculo.modelo }}<br>
+        <span class="sub">OS {{ o.numero }} · {{ o.cliente.nome }} · {{ o.pago_em|date:"d/m" }} · {{ o.get_forma_pagamento_display }}</span></span>
+      <span class="valor">{{ o.valor|brl }}</span>
+    </a></li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}

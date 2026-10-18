@@ -1,0 +1,42 @@
+{% extends 'core/base.html' %}
+{% load formatos icones %}
+{% block titulo %}Contas das lojas{% endblock %}
+{% block conteudo %}
+<h1>Contas das lojas</h1>
+<div class="cartao totais">
+  <div class="principal"><span>Devido agora</span><span>{{ devido|brl }}</span></div>
+  <div><span>Previsto</span><span>{{ previsto|brl }}</span></div>
+  <div><span>Total a pagar</span><span>{{ total|brl }}</span></div>
+  <div class="ganho"><span>Taxa de comodidade</span><span>{{ comodidade|brl }}</span></div>
+</div>
+<p class="ajuda"><strong>Devido agora</strong>: peças de OS que o cliente já pagou.
+  <strong>Previsto</strong>: peças de OS ainda aberta ou pronta.
+  <strong>Taxa de comodidade</strong>: o que foi cobrado do cliente a mais do que a loja cobrou.
+  Só entram peças lançadas como <em>Loja – fiado</em>. Toque na loja para dar baixa.</p>
+<div class="cartao">
+  <ul class="lista">
+  {% for l in lojas %}
+    <li><a class="linha-os" href="{% url 'conta_loja' l.pk %}">
+      <span><strong>{{ l.nome }}</strong><br><span class="sub">{{ l.pecas }} peça(s){% if l.previsto %} · previsto {{ l.previsto|brl }}{% endif %}<br>
+        <span class="ganho">comodidade {{ l.comodidade|brl }}</span></span></span>
+      <span class="valor"><strong>{{ l.devido|brl }}</strong><br><span class="sub">agora</span></span></a></li>
+  {% empty %}
+    <li class="vazio">Nenhuma conta em aberto.</li>
+  {% endfor %}
+  </ul>
+</div>
+
+{% if pagamentos %}
+<h2>Últimos pagamentos</h2>
+<div class="cartao">
+  <ul class="lista">
+  {% for p in pagamentos %}
+    <li><a class="linha-os" href="{% url 'conta_loja' p.loja_id %}">
+      <span><strong>{{ p.loja }}</strong><br>
+        <span class="sub">{{ p.data|date:"d/m/Y" }} · {{ p.pecas }} peça(s){% if p.criado_por %} · {{ p.criado_por }}{% endif %}</span></span>
+      <span class="valor">{{ p.valor|brl }}</span></a></li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}

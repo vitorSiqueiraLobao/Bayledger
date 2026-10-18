@@ -1,0 +1,20 @@
+# Environment and caches
+.venv/
+__pycache__/
+staticfiles/
+cache/
+
+# Your data: database, receipt photos, spreadsheets
+db.sqlite3*
+media/
+*.xlsx
+*.tar.gz
+
+# Your configuration (copy the *.example files and edit the copies)
+.env
+deploy/deploy.env
+
+# Personal tooling and notes
+.claude/
+TODO.md
+ideias.md

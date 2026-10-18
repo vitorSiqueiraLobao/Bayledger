@@ -1,0 +1,10 @@
+{% load formatos icones %}<li><label class="check-item" style="font-weight:normal;margin:0">
+  <input type="checkbox" name="itens" value="{{ i.pk }}" data-valor="{{ i.custo_total|stringformat:'.2f' }}"{% if marcada %} checked{% endif %}>
+  <span class="item" style="flex:1;padding:0">
+    <span class="desc"><strong>{{ i.quantidade|qtd }}× {{ i.descricao }}</strong><br>
+      <span class="sub">{{ i.criado_em|date:"d/m" }} · {{ i.os.veiculo.placa }} · OS {{ i.os.numero }}
+      <br>cobrado {{ i.total|brl }} · <span class="ganho">comodidade {{ i.comodidade|brl }}</span>
+      {% if i.nota %} · <a href="{{ i.nota.foto.url }}" target="_blank">{% icone "camera" %} ver nota</a>{% else %} · <span class="erro">sem nota</span>{% endif %}</span></span>
+    <span class="valor">{{ i.custo_total|brl }}</span>
+  </span>
+</label></li>

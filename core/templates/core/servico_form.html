@@ -1,0 +1,24 @@
+{% extends 'core/base.html' %}
+{% block titulo %}Mão de obra · OS {{ os.numero }}{% endblock %}
+{% block conteudo %}
+<h1>Mão de obra · {{ os.veiculo.placa }}</h1>
+<form method="post" class="cartao">{% csrf_token %}
+  {% include 'core/_campo.html' with campo=form.descricao %}
+  {% include 'core/_campo.html' with campo=form.preco_unitario %}
+  <span class="rotulo">{{ form.executor.label }}</span>
+  <div class="opcoes">{% for r in form.executor %}{{ r }}{% endfor %}</div>
+  {{ form.executor.errors }}
+  <datalist id="sugestoes">{% for d in sugestoes %}<option value="{{ d }}">{% endfor %}</datalist>
+  <br><button class="botao grande">Lançar</button>
+  <a class="botao secundario" href="{% url 'os' os.pk %}">Voltar</a>
+</form>
+{{ sugestoes|json_script:'dados-sugestoes' }}
+<script>
+  // Ao escolher um serviço já usado, sugere o último valor cobrado.
+  var S = JSON.parse(document.getElementById('dados-sugestoes').textContent);
+  document.getElementById('id_descricao').addEventListener('change', function () {
+    var s = S[this.value], p = document.getElementById('id_preco_unitario');
+    if (s && !p.value) p.value = s.preco;
+  });
+</script>
+{% endblock %}

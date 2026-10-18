@@ -1,0 +1,12 @@
+{% extends 'core/base.html' %}
+{% block titulo %}Entrar{% endblock %}
+{% block conteudo %}
+<h1>Entrar</h1>
+<form method="post" class="cartao">{% csrf_token %}
+  {% for erro in form.non_field_errors %}<p class="erro">{{ erro }}</p>{% endfor %}
+  {% include 'core/_campo.html' with campo=form.username %}
+  {% include 'core/_campo.html' with campo=form.password %}
+  <input type="hidden" name="next" value="{{ next }}">
+  <br><button class="botao grande">Entrar</button>
+</form>
+{% endblock %}

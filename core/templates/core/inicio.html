@@ -1,0 +1,30 @@
+{% extends 'core/base.html' %}
+{% load formatos icones %}
+{% block conteudo %}
+<form method="get" action="{% url 'buscar_placa' %}" class="cartao">
+  {% include 'core/_campo.html' with campo=form.placa %}
+  <div class="ajuda">Carro novo ou que já veio antes: comece sempre pela placa.</div>
+  <br><button class="botao grande">{% icone "carro" %} Abrir OS / ver carro</button>
+</form>
+
+<div class="botoes-inicio">
+  <a class="botao secundario grande" href="{% url 'todas_os' %}">{% icone "lista" %} Todas as OS</a>
+  <a class="botao secundario grande" href="{% url 'contas' %}">{% icone "recibo" %} Contas das lojas (fiado)</a>
+  <a class="botao secundario grande" href="{% url 'faturamento' %}">{% icone "dinheiro" %} Faturamento</a>
+</div>
+
+<h2>Carros na oficina agora</h2>
+<div class="cartao">
+  <ul class="lista">
+  {% for o in abertas %}
+    <li><a class="linha-os" href="{% url 'os' o.pk %}">
+      <span><strong>{{ o.veiculo.placa }}</strong> · {{ o.veiculo.modelo }}<br>
+        <span class="sub">OS {{ o.numero }} · {{ o.cliente.nome }} · {{ o.criado_em|date:"d/m" }}</span></span>
+      <span class="etiqueta {{ o.status }}">{{ o.get_status_display }}</span>
+    </a></li>
+  {% empty %}
+    <li class="vazio">Nenhum carro aberto.</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endblock %}
