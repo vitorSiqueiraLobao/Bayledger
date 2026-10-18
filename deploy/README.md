@@ -20,7 +20,7 @@ Use `~/oficina`, not `~/Documents` or `~/Desktop`: macOS blocks background servi
 
 ```bash
 brew install python@3.13 rclone cloudflared
-git clone https://github.com/vitorSiqueiraLobao/crm-oficina.git ~/oficina
+git clone https://github.com/vitorSiqueiraLobao/Bayledger.git ~/oficina
 cd ~/oficina
 python3.13 -m venv .venv
 .venv/bin/pip install -r requirements.txt

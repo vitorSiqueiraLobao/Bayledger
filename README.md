@@ -1,4 +1,4 @@
-# Oficina
+# Bayledger
 
 A small web app for running an auto repair shop from a phone: open a work order (OS) by license plate, log parts and labor, keep track of what the shop owes its parts suppliers (with a photo of every receipt), see how much money came in, and keep an untouchable history of every change.
 
@@ -68,8 +68,8 @@ Everything except the login page requires a login, including the receipt photos 
 Requires Python 3.10 or newer.
 
 ```bash
-git clone https://github.com/vitorSiqueiraLobao/crm-oficina.git
-cd crm-oficina
+git clone https://github.com/vitorSiqueiraLobao/Bayledger.git
+cd Bayledger
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp .env.example .env                       # optional: your shop's name, labor split, ...
