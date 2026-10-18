@@ -2,6 +2,7 @@ import uuid
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import F, Sum
 
@@ -90,6 +91,32 @@ class PagamentoLoja(models.Model):
         return f'Pagamento {self.loja} {self.data:%d/%m/%Y}'
 
 
+class Mecanico(models.Model):
+    """Quem faz mão de obra além do dono. Cada um tem a sua própria partilha com o dono.
+
+    Os percentuais valem para os serviços lançados DEPOIS de mudá-los: cada linha de mão de obra guarda o
+    percentual que foi aplicado (ItemOS.percentual_dono), então o histórico e o faturamento passado não mudam.
+    """
+    nome = models.CharField(max_length=120, unique=True)
+    percentual_dono_sozinho = models.DecimalField(
+        'parte do dono quando ele faz sozinho (%)', max_digits=5, decimal_places=2, default=Decimal('30'),
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text='De cada serviço feito só por este mecânico, quantos % ficam com o dono. O resto é do mecânico.')
+    percentual_dono_junto = models.DecimalField(
+        'parte do dono quando fazem juntos (%)', max_digits=5, decimal_places=2, default=Decimal('50'),
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text='De cada serviço feito pelo dono junto com este mecânico, quantos % ficam com o dono.')
+    ativo = models.BooleanField(default=True, help_text='Desmarque quando sair da oficina: some das opções, '
+                                                        'mas os serviços antigos continuam com o nome dele.')
+
+    class Meta:
+        ordering = ['nome']
+        verbose_name = 'mecânico'
+
+    def __str__(self):
+        return self.nome
+
+
 class OrdemServico(models.Model):
     ABERTA, FINALIZADA, PAGA, CANCELADA = 'aberta', 'finalizada', 'paga', 'cancelada'
     STATUS = [
@@ -151,17 +178,18 @@ class OrdemServico(models.Model):
         return r['t'] or Decimal('0')
 
     def divisao_mao_de_obra(self):
-        """Quanto da mão de obra fica com cada um: {'dono': ..., 'mecanico': ...}."""
-        soma = {'dono': Decimal('0'), 'mecanico': Decimal('0')}
-        for item in self.itens.filter(tipo=ItemOS.SERVICO):
+        """Quanto da mão de obra fica com cada um: {'dono': valor, <Mecanico>: valor, ...}."""
+        soma = {'dono': Decimal('0')}
+        for item in self.itens.filter(tipo=ItemOS.SERVICO).select_related('mecanico'):
             for quem, valor in item.divisao().items():
-                soma[quem] += valor
+                soma[quem] = soma.get(quem, Decimal('0')) + valor
         return soma
 
 
 def executores():
-    """Opções de "quem fez". Os nomes vêm da configuração (OFICINA_NOME_DONO / OFICINA_NOME_MECANICO)."""
-    return [(ItemOS.DONO, settings.NOME_DONO), (ItemOS.MECANICO, settings.NOME_MECANICO), (ItemOS.AMBOS, 'Os dois')]
+    """Os três papéis gravados em ItemOS.executor. Quem é o mecânico está em ItemOS.mecanico."""
+    return [(ItemOS.DONO, settings.NOME_DONO), (ItemOS.MECANICO, 'Mecânico'),
+            (ItemOS.AMBOS, f'{settings.NOME_DONO} + mecânico')]
 
 
 class ItemOS(models.Model):
@@ -192,6 +220,12 @@ class ItemOS(models.Model):
     pagamento = models.ForeignKey(PagamentoLoja, on_delete=models.PROTECT, null=True, blank=True,
                                   related_name='itens')
     executor = models.CharField('quem fez', max_length=10, choices=executores, blank=True)
+    mecanico = models.ForeignKey(Mecanico, on_delete=models.PROTECT, null=True, blank=True, related_name='servicos',
+                                 verbose_name='mecânico')
+    percentual_dono = models.DecimalField(
+        'parte do dono (%)', max_digits=5, decimal_places=2, default=Decimal('100'),
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text='Percentual aplicado na hora do lançamento (vem do cadastro do mecânico).')
     criado_em = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -212,14 +246,29 @@ class ItemOS(models.Model):
         """Taxa de comodidade da peça: o que o cliente paga a mais do que custou na loja."""
         return self.total() - self.custo_total()
 
+    @property
+    def quem_fez(self):
+        """Texto para a tela: "Fulano", "Dono + Fulano" ou vazio se não foi informado."""
+        if self.executor == self.DONO:
+            return settings.NOME_DONO
+        if not self.mecanico_id:
+            return ''
+        return f'{settings.NOME_DONO} + {self.mecanico.nome}' if self.executor == self.AMBOS else self.mecanico.nome
+
     def divisao(self):
-        """Parte de cada um nesta mão de obra. Peça (ou serviço sem executor) não entra na divisão."""
-        fracoes = settings.DIVISAO_MAO_DE_OBRA.get(self.executor)
-        if self.tipo != self.SERVICO or not fracoes:
+        """Parte de cada um nesta mão de obra: {'dono': valor} ou {'dono': valor, <Mecanico>: valor}.
+
+        Peça (ou serviço sem executor) não entra na divisão.
+        """
+        if self.tipo != self.SERVICO or not self.executor:
             return {}
         total = self.total().quantize(Decimal('0.01'))
-        dono = (total * Decimal(fracoes['dono'])).quantize(Decimal('0.01'))
-        return {'dono': dono, 'mecanico': total - dono}  # o mecânico fica com o resto: centavos não somem
+        if self.executor == self.DONO:
+            return {'dono': total}
+        if not self.mecanico_id:
+            return {}
+        dono = (total * self.percentual_dono / 100).quantize(Decimal('0.01'))
+        return {'dono': dono, self.mecanico: total - dono}  # o mecânico fica com o resto: centavos não somem
 
 
 class Registro(models.Model):

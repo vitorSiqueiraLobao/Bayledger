@@ -132,19 +132,25 @@ def nova_os(request, veiculo_pk=None):
 @login_required
 def os_detalhe(request, pk):
     os_ = get_object_or_404(OrdemServico.objects.select_related('veiculo', 'cliente'), pk=pk)
-    itens = os_.itens.select_related('loja', 'nota')
+    itens = os_.itens.select_related('loja', 'nota', 'mecanico')
     servicos = [i for i in itens if i.tipo == ItemOS.SERVICO]
     return render(request, 'core/os.html', {
         'os': os_,
         'pecas': [i for i in itens if i.tipo == ItemOS.PECA],
         'servicos': servicos,
-        'divisao': os_.divisao_mao_de_obra() if servicos else None,
-        'nome_dono': settings.NOME_DONO,
-        'nome_mecanico': settings.NOME_MECANICO,
+        'divisao': _linhas_divisao(os_.divisao_mao_de_obra()) if servicos else None,
         'whatsapp': _link_whatsapp(os_),
         'pagar_form': PagarForm(),
         'cancelar_form': CancelarForm(),
     })
+
+
+def _linhas_divisao(partes):
+    """{'dono': x, <Mecanico>: y} -> [{'nome', 'valor'}], o dono primeiro e os mecânicos em ordem alfabética."""
+    linhas = [{'nome': settings.NOME_DONO, 'valor': partes.get('dono', Decimal('0'))}]
+    for quem in sorted((k for k in partes if k != 'dono'), key=lambda m: m.nome.lower()):
+        linhas.append({'nome': quem.nome, 'valor': partes[quem]})
+    return linhas
 
 
 def _link_whatsapp(os_):
@@ -402,23 +408,22 @@ def faturamento(request):
     pecas = itens.filter(tipo=ItemOS.PECA).aggregate(
         preco=Sum(F('quantidade') * F('preco_unitario'), default=zero),
         custo=Sum(F('quantidade') * F('custo_unitario'), default=zero))
-    mao_de_obra = {'dono': zero, 'mecanico': zero, 'sem_executor': zero}
-    for item in itens.filter(tipo=ItemOS.SERVICO):  # item a item, para bater centavo com o que a OS mostra
-        partes = item.divisao()
-        if partes:
-            mao_de_obra['dono'] += partes['dono']
-            mao_de_obra['mecanico'] += partes['mecanico']
+    partes, sem_executor = {'dono': zero}, zero
+    for item in itens.filter(tipo=ItemOS.SERVICO).select_related('mecanico'):  # item a item, para bater centavo com a OS
+        divisao = item.divisao()
+        if divisao:
+            for quem, valor in divisao.items():
+                partes[quem] = partes.get(quem, zero) + valor
         else:
-            mao_de_obra['sem_executor'] += item.total()
-    servicos = sum(mao_de_obra.values(), zero)
+            sem_executor += item.total()
+    servicos = sum(partes.values(), zero) + sem_executor
     comodidade = pecas['preco'] - pecas['custo']
     return render(request, 'core/faturamento.html', {
         'form': form, 'periodo': periodo, 'de': de, 'ate': ate, 'ordens': ordens, 'formas': formas,
         'recebido': sum((o.valor for o in ordens), zero),
         'pecas': pecas['preco'], 'custo_pecas': pecas['custo'], 'comodidade': comodidade,
-        'servicos': servicos, 'mao_de_obra': mao_de_obra,
-        'resultado_dono': mao_de_obra['dono'] + comodidade,
-        'nome_dono': settings.NOME_DONO, 'nome_mecanico': settings.NOME_MECANICO,
+        'servicos': servicos, 'mao_de_obra': _linhas_divisao(partes), 'sem_executor': sem_executor,
+        'resultado_dono': partes['dono'] + comodidade, 'nome_dono': settings.NOME_DONO,
     })
 
 

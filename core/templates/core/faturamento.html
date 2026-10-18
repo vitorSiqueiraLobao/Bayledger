@@ -39,9 +39,8 @@
 </div>
 <div class="cartao totais">
   <div><strong>Mão de obra</strong><strong>{{ servicos|brl }}</strong></div>
-  <div><span>Parte de {{ nome_dono }}</span><span>{{ mao_de_obra.dono|brl }}</span></div>
-  <div><span>Parte de {{ nome_mecanico }}</span><span>{{ mao_de_obra.mecanico|brl }}</span></div>
-  {% if mao_de_obra.sem_executor %}<div class="erro"><span>Sem quem fez informado</span><span>{{ mao_de_obra.sem_executor|brl }}</span></div>{% endif %}
+  {% for p in mao_de_obra %}<div><span>Parte de {{ p.nome }}</span><span>{{ p.valor|brl }}</span></div>{% endfor %}
+  {% if sem_executor %}<div class="erro"><span>Sem quem fez informado</span><span>{{ sem_executor|brl }}</span></div>{% endif %}
 </div>
 
 <div class="cartao totais">

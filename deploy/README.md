@@ -39,7 +39,7 @@ set -a; source ~/oficina-dados/oficina.env; set +a
 .venv/bin/python manage.py createsuperuser
 ```
 
-Employees are created later in the app, at `/painel/` → *Users* → *Add*, with *Staff status* unchecked.
+Employees are created later in the app, at `/painel/` → *Users* → *Add*, with *Staff status* unchecked. Mechanics (and how each one shares the labor with the owner) are added at `/painel/` → *Mecânicos*.
 
 ## 3. Start on boot (launchd)
 

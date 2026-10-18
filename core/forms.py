@@ -1,8 +1,10 @@
 from datetime import timedelta
+from decimal import Decimal
 
 from django import forms
+from django.conf import settings
 
-from .models import ItemOS, Loja, Nota, OrdemServico, executores
+from .models import ItemOS, Loja, Mecanico, Nota, OrdemServico
 
 
 def campo_dinheiro(label, required=True, initial=None):
@@ -60,8 +62,33 @@ class ServicoForm(forms.Form):
                                 widget=forms.TextInput(attrs={'list': 'sugestoes', 'autocomplete': 'off',
                                                               'placeholder': 'Troca de óleo e filtros'}))
     preco_unitario = campo_dinheiro('Valor da mão de obra (R$)')
-    executor = forms.ChoiceField(label='Quem fez?', choices=executores, widget=forms.RadioSelect,
+    executor = forms.ChoiceField(label='Quem fez?', widget=forms.RadioSelect,
                                  error_messages={'required': 'Escolha quem fez o serviço.'})
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Uma opção para o dono e, para cada mecânico ativo, "ele sozinho" e "ele junto com o dono".
+        self.mecanicos = {m.pk: m for m in Mecanico.objects.filter(ativo=True)}
+        opcoes = [(ItemOS.DONO, settings.NOME_DONO)]
+        for m in self.mecanicos.values():
+            opcoes.append((f'{ItemOS.MECANICO}:{m.pk}', m.nome))
+            opcoes.append((f'{ItemOS.AMBOS}:{m.pk}', f'{settings.NOME_DONO} + {m.nome}'))
+        self.fields['executor'].choices = opcoes
+
+    def clean(self):
+        dados = super().clean()
+        escolha = dados.get('executor')
+        if escolha:
+            papel, _, pk = escolha.partition(':')
+            mecanico = self.mecanicos[int(pk)] if pk else None
+            dados['executor'] = papel
+            dados['mecanico'] = mecanico
+            # O percentual fica gravado na linha: mudar o cadastro depois não mexe no que já foi lançado.
+            dados['percentual_dono'] = (
+                Decimal('100') if mecanico is None
+                else mecanico.percentual_dono_sozinho if papel == ItemOS.MECANICO
+                else mecanico.percentual_dono_junto)
+        return dados
 
 
 class PecaForm(forms.Form):

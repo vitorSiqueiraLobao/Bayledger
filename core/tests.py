@@ -11,18 +11,13 @@ from django.test import TestCase as _TestCase, override_settings
 from django.utils import timezone
 from PIL import Image
 
-from .models import Cliente, ItemOS, Loja, Nota, OrdemServico, PagamentoLoja, Registro, Veiculo
+from .models import Cliente, ItemOS, Loja, Mecanico, Nota, OrdemServico, PagamentoLoja, Registro, Veiculo
 
 MEDIA = tempfile.mkdtemp()
 
-# Nomes, divisão e acréscimo do cartão ficam fixos aqui: os testes não dependem do .env de quem os roda.
-CONFIG_TESTE = dict(
-    NOME_OFICINA='Oficina Teste', NOME_DONO='Dono Teste', NOME_MECANICO='Mecânico Teste',
-    ACRESCIMO_CARTAO='1.10', CODIGO_PAIS_TELEFONE='55',
-    DIVISAO_MAO_DE_OBRA={'dono': {'dono': '1.00', 'mecanico': '0.00'},
-                         'mecanico': {'dono': '0.30', 'mecanico': '0.70'},
-                         'ambos': {'dono': '0.50', 'mecanico': '0.50'}},
-)
+# Nome do dono e acréscimo do cartão ficam fixos aqui: os testes não dependem do .env de quem os roda.
+CONFIG_TESTE = dict(NOME_OFICINA='Oficina Teste', NOME_DONO='Dono Teste', ACRESCIMO_CARTAO='1.10',
+                    CODIGO_PAIS_TELEFONE='55')
 
 
 @override_settings(**CONFIG_TESTE)
@@ -128,6 +123,9 @@ class QuemFezMaoDeObra(TestCase):
         self.client.force_login(User.objects.create_user('atendente', password='x'))
         v = Veiculo.objects.create(placa='ABC1D23', modelo='207', cliente=Cliente.objects.create(nome='Ana'))
         self.os = OrdemServico.objects.create(veiculo=v, cliente=v.cliente)
+        # Cada mecânico tem a sua partilha: o João deixa 30% (sozinho) ou 50% (junto) para o dono, o Pedro 20% / 40%.
+        self.joao = Mecanico.objects.create(nome='João', percentual_dono_sozinho=30, percentual_dono_junto=50)
+        self.pedro = Mecanico.objects.create(nome='Pedro', percentual_dono_sozinho=20, percentual_dono_junto=40)
 
     def lancar(self, descricao, valor, executor):
         return self.client.post(f'/os/{self.os.pk}/servico/', {'descricao': descricao, 'preco_unitario': valor,
@@ -138,47 +136,106 @@ class QuemFezMaoDeObra(TestCase):
         self.assertContains(r, 'Escolha quem fez o serviço')
         self.assertFalse(ItemOS.objects.exists())
 
-    def test_grava_executor(self):
-        self.lancar('Revisão', '100', 'ambos')
-        self.assertEqual(ItemOS.objects.get().executor, ItemOS.AMBOS)
+    def test_opcoes_sao_o_dono_e_cada_mecanico_ativo(self):
+        r = self.client.get(f'/os/{self.os.pk}/servico/')
+        self.assertEqual(
+            [nome for _, nome in r.context['form'].fields['executor'].choices],
+            ['Dono Teste', 'João', 'Dono Teste + João', 'Pedro', 'Dono Teste + Pedro'])
+        self.assertContains(r, 'Dono Teste + Pedro')
+
+    def test_escolha_invalida_ou_de_mecanico_inexistente_e_recusada(self):
+        for escolha in ('ambos', 'mecanico:999', 'invalido'):
+            self.assertContains(self.lancar('Revisão', '100', escolha), 'Faça uma escolha válida')
+        self.assertFalse(ItemOS.objects.exists())
+
+    def test_grava_quem_fez_e_o_percentual_aplicado(self):
+        self.lancar('Revisão', '100', f'ambos:{self.joao.pk}')
+        self.lancar('Motor', '100', f'mecanico:{self.pedro.pk}')
+        self.lancar('Suspensão', '100', 'dono')
+        juntos, sozinho, dono = ItemOS.objects.order_by('id')
+        self.assertEqual((juntos.executor, juntos.mecanico, juntos.percentual_dono), (ItemOS.AMBOS, self.joao, 50))
+        self.assertEqual((sozinho.executor, sozinho.mecanico, sozinho.percentual_dono), (ItemOS.MECANICO, self.pedro, 20))
+        self.assertEqual((dono.executor, dono.mecanico, dono.percentual_dono), (ItemOS.DONO, None, 100))
 
     def test_divisao_por_executor(self):
         self.lancar('Revisão', '100', 'dono')
-        self.lancar('Suspensão', '200', 'mecanico')
-        self.lancar('Motor', '300', 'ambos')
+        self.lancar('Suspensão', '200', f'mecanico:{self.joao.pk}')
+        self.lancar('Motor', '300', f'ambos:{self.joao.pk}')
         d = self.os.divisao_mao_de_obra()
         self.assertEqual(d['dono'], Decimal('100') + 60 + 150)
-        self.assertEqual(d['mecanico'], Decimal('140') + 150)
+        self.assertEqual(d[self.joao], Decimal('140') + 150)
+        self.assertEqual(set(d), {'dono', self.joao})
+
+    def test_cada_mecanico_tem_a_sua_partilha(self):
+        self.lancar('Suspensão', '200', f'mecanico:{self.joao.pk}')
+        self.lancar('Freios', '200', f'mecanico:{self.pedro.pk}')
+        self.lancar('Embreagem', '200', f'ambos:{self.pedro.pk}')
+        d = self.os.divisao_mao_de_obra()
+        self.assertEqual(d['dono'], Decimal('60') + 40 + 80)
+        self.assertEqual(d[self.joao], Decimal('140'))
+        self.assertEqual(d[self.pedro], Decimal('160') + 120)
+
+    def test_mudar_o_cadastro_nao_muda_o_que_ja_foi_lancado(self):
+        self.lancar('Suspensão', '200', f'mecanico:{self.joao.pk}')
+        self.joao.percentual_dono_sozinho = 10
+        self.joao.save()
+        self.lancar('Freios', '200', f'mecanico:{self.joao.pk}')
+        antes, depois = ItemOS.objects.order_by('id')
+        self.assertEqual(antes.divisao()[self.joao], Decimal('140.00'))
+        self.assertEqual(depois.divisao()[self.joao], Decimal('180.00'))
 
     def test_centavos_nao_somem(self):
-        self.lancar('Ajuste', '0,05', 'ambos')
+        self.lancar('Ajuste', '0,05', f'ambos:{self.joao.pk}')
         d = self.os.divisao_mao_de_obra()
-        self.assertEqual(d['dono'] + d['mecanico'], Decimal('0.05'))
+        self.assertEqual(d['dono'] + d[self.joao], Decimal('0.05'))
 
     def test_peca_nao_entra_na_divisao(self):
         ItemOS.objects.create(os=self.os, tipo=ItemOS.PECA, descricao='Bieleta', preco_unitario=50, origem='estoque')
-        self.lancar('Revisão', '100', 'mecanico')
-        self.assertEqual(self.os.divisao_mao_de_obra(), {'dono': Decimal('30.00'), 'mecanico': Decimal('70.00')})
+        self.lancar('Revisão', '100', f'mecanico:{self.joao.pk}')
+        self.assertEqual(self.os.divisao_mao_de_obra(), {'dono': Decimal('30.00'), self.joao: Decimal('70.00')})
 
-    @override_settings(DIVISAO_MAO_DE_OBRA={'dono': {'dono': '1', 'mecanico': '0'},
-                                            'mecanico': {'dono': '0.40', 'mecanico': '0.60'},
-                                            'ambos': {'dono': '0.5', 'mecanico': '0.5'}})
-    def test_percentual_vem_do_settings(self):
-        self.lancar('Revisão', '100', 'mecanico')
-        self.assertEqual(self.os.divisao_mao_de_obra()['mecanico'], Decimal('60.00'))
+    def test_mecanico_inativo_sai_das_opcoes_mas_o_historico_fica(self):
+        self.lancar('Suspensão', '200', f'mecanico:{self.pedro.pk}')
+        self.pedro.ativo = False
+        self.pedro.save()
+        r = self.client.get(f'/os/{self.os.pk}/servico/')
+        self.assertNotContains(r, 'Pedro')
+        self.assertContains(self.lancar('Freios', '100', f'mecanico:{self.pedro.pk}'), 'Faça uma escolha válida')
+        self.assertContains(self.client.get(f'/os/{self.os.pk}/'), 'Fica com Pedro')
 
     def test_os_mostra_divisao_mas_cliente_nao_ve(self):
-        self.lancar('Revisão', '100', 'mecanico')
+        self.lancar('Revisão', '100', f'mecanico:{self.joao.pk}')
+        self.lancar('Freios', '100', f'ambos:{self.pedro.pk}')
         r = self.client.get(f'/os/{self.os.pk}/')
-        self.assertContains(r, 'Fica com Dono Teste')
-        self.assertContains(r, 'Fica com Mecânico Teste')
-        self.assertContains(r, 'R$ 30,00')
-        self.assertContains(r, 'R$ 70,00')
-        self.assertNotContains(self.client.get(f'/os/{self.os.pk}/imprimir/'), 'Mecânico Teste')
+        # João sozinho 100 -> dono 30 / João 70. Pedro junto com o dono 100 -> dono 40 / Pedro 60.
+        for linha in ('Fica com Dono Teste</span><span>R$ 70,00', 'Fica com João</span><span>R$ 70,00',
+                      'Fica com Pedro</span><span>R$ 60,00'):
+            self.assertContains(r, linha)
+        impressao = self.client.get(f'/os/{self.os.pk}/imprimir/')
+        for nome in ('João', 'Pedro'):
+            self.assertNotContains(impressao, nome)
+
+    def test_so_aparece_na_divisao_quem_trabalhou_na_os(self):
+        self.lancar('Revisão', '100', 'dono')
+        self.assertNotContains(self.client.get(f'/os/{self.os.pk}/'), 'Fica com João')
 
     def test_servico_sem_executor_aparece_como_nao_informado(self):
         ItemOS.objects.create(os=self.os, tipo=ItemOS.SERVICO, descricao='Antigo', preco_unitario=10)
         self.assertContains(self.client.get(f'/os/{self.os.pk}/'), 'quem fez não informado')
+
+    def test_cadastro_de_mecanico_no_painel(self):
+        self.client.force_login(User.objects.create_superuser('chefe', password='x'))
+        self.assertContains(self.client.get('/painel/core/mecanico/'), 'João')
+        r = self.client.post('/painel/core/mecanico/add/', {'nome': 'Zé', 'percentual_dono_sozinho': '25',
+                                                            'percentual_dono_junto': '45', 'ativo': 'on'})
+        self.assertEqual(r.status_code, 302)
+        ze = Mecanico.objects.get(nome='Zé')
+        self.assertEqual((ze.percentual_dono_sozinho, ze.percentual_dono_junto), (25, 45))
+        self.assertTrue(Registro.objects.filter(modelo='mecânico', acao='criou', descricao='Zé').exists())
+        r = self.client.post('/painel/core/mecanico/add/', {'nome': 'Fora', 'percentual_dono_sozinho': '150',
+                                                            'percentual_dono_junto': '45', 'ativo': 'on'})
+        self.assertEqual(r.status_code, 200)  # volta com erro: porcentagem acima de 100
+        self.assertFalse(Mecanico.objects.filter(nome='Fora').exists())
 
 
 class TodasAsOS(TestCase):
@@ -366,14 +423,18 @@ class Faturamento(TestCase):
     def setUp(self):
         self.client.force_login(User.objects.create_user('atendente', password='x'))
         self.v = Veiculo.objects.create(placa='ABC1D23', modelo='Gol', cliente=Cliente.objects.create(nome='Ana'))
+        self.joao = Mecanico.objects.create(nome='João', percentual_dono_sozinho=30, percentual_dono_junto=50)
+        self.pedro = Mecanico.objects.create(nome='Pedro', percentual_dono_sozinho=20, percentual_dono_junto=40)
         agora = timezone.now()
-        # Hoje: pix com peça (cobrado 100, custo 60) e mão de obra do mecânico (200 -> 60 dono / 140 mecânico)
+        # Hoje: pix com peça (cobrado 100, custo 60), mão de obra do João (200 -> 60 dono / 140 João)
+        # e do Pedro (100 -> 20 dono / 80 Pedro)
         a = self.os_paga('pix', agora)
         self.item(a, ItemOS.PECA, '100', custo='60')
-        self.item(a, ItemOS.SERVICO, '200', executor=ItemOS.MECANICO)
-        # Hoje: cartão com mão de obra dos dois (90,01 -> 45,00 / 45,01) e uma sem executor (10)
+        self.item(a, ItemOS.SERVICO, '200', executor=ItemOS.MECANICO, mecanico=self.joao, percentual=30)
+        self.item(a, ItemOS.SERVICO, '100', executor=ItemOS.MECANICO, mecanico=self.pedro, percentual=20)
+        # Hoje: cartão com mão de obra do dono com o João (90,01 -> 45,00 / 45,01) e uma sem executor (10)
         b = self.os_paga('cartao', agora)
-        self.item(b, ItemOS.SERVICO, '90.01', executor=ItemOS.AMBOS)
+        self.item(b, ItemOS.SERVICO, '90.01', executor=ItemOS.AMBOS, mecanico=self.joao, percentual=50)
         self.item(b, ItemOS.SERVICO, '10')
         # Há 40 dias: dinheiro, só mão de obra do dono
         self.antiga = self.os_paga('dinheiro', agora - timedelta(days=40))
@@ -387,23 +448,26 @@ class Faturamento(TestCase):
         return OrdemServico.objects.create(veiculo=self.v, cliente=self.v.cliente, status=OrdemServico.PAGA,
                                            forma_pagamento=forma, pago_em=quando)
 
-    def item(self, os_, tipo, preco, custo='0', executor=''):
+    def item(self, os_, tipo, preco, custo='0', executor='', mecanico=None, percentual=100):
         ItemOS.objects.create(os=os_, tipo=tipo, descricao='x', quantidade=1, preco_unitario=Decimal(preco),
-                              custo_unitario=Decimal(custo), executor=executor)
+                              custo_unitario=Decimal(custo), executor=executor, mecanico=mecanico,
+                              percentual_dono=percentual)
 
     def test_hoje(self):
         c = self.client.get('/faturamento/?periodo=hoje').context
         self.assertEqual(len(c['ordens']), 2)
-        self.assertEqual(c['recebido'], Decimal('400.01'))
+        self.assertEqual(c['recebido'], Decimal('500.01'))
         self.assertEqual({f['chave']: f['total'] for f in c['formas']},
-                         {'pix': Decimal('300'), 'cartao': Decimal('100.01')})
+                         {'pix': Decimal('400'), 'cartao': Decimal('100.01')})
         self.assertEqual(c['formas'][1]['maquininha'], Decimal('110.01'))
         self.assertEqual((c['pecas'], c['custo_pecas'], c['comodidade']),
                          (Decimal('100'), Decimal('60'), Decimal('40')))
-        self.assertEqual(c['servicos'], Decimal('300.01'))
-        self.assertEqual(c['mao_de_obra'], {'dono': Decimal('105.00'), 'mecanico': Decimal('185.01'),
-                                            'sem_executor': Decimal('10')})
-        self.assertEqual(c['resultado_dono'], Decimal('145.00'))
+        self.assertEqual(c['servicos'], Decimal('400.01'))
+        self.assertEqual(c['mao_de_obra'], [{'nome': 'Dono Teste', 'valor': Decimal('125.00')},
+                                            {'nome': 'João', 'valor': Decimal('185.01')},
+                                            {'nome': 'Pedro', 'valor': Decimal('80.00')}])
+        self.assertEqual(c['sem_executor'], Decimal('10'))
+        self.assertEqual(c['resultado_dono'], Decimal('165.00'))
         self.assertEqual(c['pecas'] + c['servicos'], c['recebido'])
 
     def test_datas_livres_e_ordem_invertida(self):
@@ -420,6 +484,7 @@ class Faturamento(TestCase):
         r = self.client.get(f'/faturamento/?periodo=livre&de={hoje:%Y-%m-%d}')
         self.assertEqual((r.context['recebido'], r.context['resultado_dono'], r.context['formas']),
                          (Decimal('0'), Decimal('0'), []))
+        self.assertEqual(r.context['mao_de_obra'], [{'nome': 'Dono Teste', 'valor': Decimal('0')}])
         self.assertContains(r, 'R$ 0,00')
 
     def test_periodos(self):
@@ -644,24 +709,29 @@ class BloqueioLogin(TestCase):
 
 
 class Configuracao(TestCase):
-    def test_nomes_de_quem_fez_vem_da_configuracao(self):
+    def test_nome_do_dono_vem_da_configuracao(self):
         from .models import executores
-        self.assertEqual(executores(), [('dono', 'Dono Teste'), ('mecanico', 'Mecânico Teste'), ('ambos', 'Os dois')])
+        self.assertEqual(executores(), [('dono', 'Dono Teste'), ('mecanico', 'Mecânico'),
+                                        ('ambos', 'Dono Teste + mecânico')])
         with override_settings(NOME_DONO='Marcos'):
             self.assertEqual(executores()[0], ('dono', 'Marcos'))
 
     def test_semear_demo_cria_e_apaga_so_o_que_e_dele(self):
         Cliente.objects.create(nome='Cliente Real')
+        Mecanico.objects.create(nome='Mecânico Real')
         call_command('semear_demo', verbosity=0)
         self.assertEqual(OrdemServico.objects.count(), 8)
         servicos = ItemOS.objects.filter(tipo=ItemOS.SERVICO)
         self.assertEqual(servicos.count(), 9)
-        self.assertFalse(servicos.exclude(executor__in=['dono', 'mecanico', 'ambos']).exists())
+        self.assertFalse(servicos.filter(executor=ItemOS.DONO, mecanico__isnull=False).exists())
+        self.assertFalse(servicos.exclude(executor=ItemOS.DONO).filter(mecanico__isnull=True).exists())
+        self.assertEqual(Mecanico.objects.filter(nome__endswith='(demo)').count(), 2)
         call_command('semear_demo', verbosity=0)  # idempotente
         self.assertEqual(OrdemServico.objects.count(), 8)
         call_command('semear_demo', apagar=True, verbosity=0)
         self.assertEqual(OrdemServico.objects.count(), 0)
         self.assertEqual(list(Cliente.objects.values_list('nome', flat=True)), ['Cliente Real'])
+        self.assertEqual(list(Mecanico.objects.values_list('nome', flat=True)), ['Mecânico Real'])
 
     def test_banco_novo_comeca_vazio(self):
         self.assertFalse(Veiculo.objects.exists())

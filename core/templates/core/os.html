@@ -44,7 +44,7 @@
   {% for i in servicos %}
     <li class="item">
       <div class="desc"><strong>{{ i.descricao }}</strong><br>
-        <span class="sub">{% if i.executor %}{{ i.get_executor_display }}{% else %}<span class="erro">quem fez não informado</span>{% endif %}</span>
+        <span class="sub">{% if i.quem_fez %}{{ i.quem_fez }}{% else %}<span class="erro">quem fez não informado</span>{% endif %}</span>
         {% if os.editavel %}
         <form method="post" action="{% url 'remover_item' os.pk i.pk %}" onsubmit="return confirm('Tirar {{ i.descricao|escapejs }} da OS?')">{% csrf_token %}<button>remover</button></form>
         {% endif %}
@@ -55,8 +55,7 @@
   </ul>
   {% if divisao %}
   <div class="totais divisao">
-    <div><span>Fica com {{ nome_dono }}</span><span>{{ divisao.dono|brl }}</span></div>
-    <div><span>Fica com {{ nome_mecanico }}</span><span>{{ divisao.mecanico|brl }}</span></div>
+    {% for p in divisao %}<div><span>Fica com {{ p.nome }}</span><span>{{ p.valor|brl }}</span></div>{% endfor %}
   </div>
   {% endif %}
 </div>

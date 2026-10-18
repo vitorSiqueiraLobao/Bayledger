@@ -3,7 +3,7 @@ from django.db import migrations, models
 import core.models
 
 # O que fica gravado em ItemOS.executor deixa de ser o nome de uma pessoa e passa a ser o papel.
-# Os nomes mostrados na tela vêm da configuração (OFICINA_NOME_DONO / OFICINA_NOME_MECANICO).
+# O nome do dono vem de OFICINA_NOME_DONO; a migração 0006 transforma o mecânico em cadastro.
 TROCAS = {'lobao': 'dono', 'rafael': 'mecanico'}
 
 

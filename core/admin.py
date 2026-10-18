@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Cliente, ItemOS, Loja, Nota, OrdemServico, PagamentoLoja, Registro, Veiculo
+from .models import Cliente, ItemOS, Loja, Mecanico, Nota, OrdemServico, PagamentoLoja, Registro, Veiculo
 from .templatetags.formatos import brl
 
 
@@ -31,12 +31,19 @@ class LojaAdmin(admin.ModelAdmin):
     search_fields = ['nome']
 
 
+@admin.register(Mecanico)
+class MecanicoAdmin(SemApagar, admin.ModelAdmin):
+    list_display = ['nome', 'percentual_dono_sozinho', 'percentual_dono_junto', 'ativo']
+    list_filter = ['ativo']
+    search_fields = ['nome']
+
+
 class ItemInline(admin.TabularInline):
     model = ItemOS
     extra = 0
-    fields = ['tipo', 'descricao', 'quantidade', 'preco_unitario', 'custo_unitario', 'executor', 'origem', 'loja',
-              'nota', 'pago_loja_em', 'pagamento']
-    autocomplete_fields = ['loja']
+    fields = ['tipo', 'descricao', 'quantidade', 'preco_unitario', 'custo_unitario', 'executor', 'mecanico',
+              'percentual_dono', 'origem', 'loja', 'nota', 'pago_loja_em', 'pagamento']
+    autocomplete_fields = ['loja', 'mecanico']
     raw_id_fields = ['nota', 'pagamento']
 
     def has_delete_permission(self, request, obj=None):
@@ -64,9 +71,9 @@ class OrdemServicoAdmin(SemApagar, admin.ModelAdmin):
 @admin.register(ItemOS)
 class ItemOSAdmin(SemApagar, admin.ModelAdmin):
     list_display = ['os', 'tipo', 'descricao', 'quantidade', 'preco_unitario', 'custo_unitario', 'executor',
-                    'origem', 'loja', 'nota', 'pago_loja_em', 'pagamento']
+                    'mecanico', 'percentual_dono', 'origem', 'loja', 'nota', 'pago_loja_em', 'pagamento']
     raw_id_fields = ['nota', 'pagamento']
-    list_filter = ['tipo', 'executor', 'origem', 'loja', 'pago_loja_em']
+    list_filter = ['tipo', 'executor', 'mecanico', 'origem', 'loja', 'pago_loja_em']
     search_fields = ['descricao', 'os__veiculo__placa']
 
 

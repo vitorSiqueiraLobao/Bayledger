@@ -11,7 +11,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from core.models import Cliente, ItemOS, Loja, OrdemServico, Veiculo
+from core.models import Cliente, ItemOS, Loja, Mecanico, OrdemServico, Veiculo
 
 PREFIXO_PLACA = 'DEM'
 
@@ -26,46 +26,49 @@ CARROS = [
 
 LOJAS = ['Auto Peças Demo', 'Casa do Rolamento Demo']
 
+# nome, % do dono quando o mecânico faz sozinho, % do dono quando fazem juntos
+MECANICOS = [('Carlos (demo)', '30', '50'), ('Paulo (demo)', '20', '40')]
+
 # Cada OS: (placa, dias atrás, situação, forma de pagamento, km, pedido, itens)
 # Peça: ('peca', descrição, qtd, preço, custo, origem, loja (índice em LOJAS ou None), pago à loja?)
-# Serviço: ('servico', descrição, preço, executor)
+# Serviço: ('servico', descrição, preço, executor, mecânico (índice em MECANICOS ou None))
 ORDENS = [
     ('DEM1A01', 28, 'paga', 'pix', 120000, 'Revisão completa', [
         ('peca', 'Óleo 5w30', 4, '35.00', '22.00', 'fiado', 0, True),
         ('peca', 'Filtro de óleo', 1, '40.00', '25.00', 'fiado', 0, True),
-        ('servico', 'Troca de óleo e filtros', '80.00', 'dono'),
+        ('servico', 'Troca de óleo e filtros', '80.00', 'dono', None),
     ]),
     ('DEM2B02', 21, 'paga', 'cartao', 98000, 'Barulho na suspensão', [
         ('peca', 'Bieleta', 2, '45.00', '29.50', 'fiado', 0, False),
         ('peca', 'Bucha da bandeja', 2, '30.00', '18.00', 'fiado', 1, False),
-        ('servico', 'Troca de bieletas e buchas', '200.00', 'mecanico'),
+        ('servico', 'Troca de bieletas e buchas', '200.00', 'mecanico', 0),
     ]),
     ('DEM3C03', 14, 'paga', 'dinheiro', 210000, 'Motor falhando', [
         ('peca', 'Jogo de velas', 1, '120.00', '80.00', 'pago', 1, False),
         ('peca', 'Cabo de vela', 1, '150.00', '0.00', 'cliente', None, False),
-        ('servico', 'Troca de velas e cabos', '150.00', 'ambos'),
-        ('servico', 'Limpeza de bicos', '180.00', 'mecanico'),
+        ('servico', 'Troca de velas e cabos', '150.00', 'ambos', 0),
+        ('servico', 'Limpeza de bicos', '180.00', 'mecanico', 1),
     ]),
     ('DEM4D04', 10, 'cancelada', '', 45000, 'Orçamento de freio', [
         ('peca', 'Pastilha de freio', 1, '160.00', '95.00', 'fiado', 0, False),
-        ('servico', 'Troca de pastilhas', '100.00', 'dono'),
+        ('servico', 'Troca de pastilhas', '100.00', 'dono', None),
     ]),
     ('DEM5E05', 6, 'paga', 'pix', 132000, 'Ar-condicionado não gela', [
         ('peca', 'Gás R134a', 1, '180.00', '110.00', 'internet', 1, False),
-        ('servico', 'Carga de gás e teste', '150.00', 'ambos'),
+        ('servico', 'Carga de gás e teste', '150.00', 'ambos', 1),
     ]),
     ('DEM1A01', 3, 'finalizada', '', 121500, 'Luz da bateria acesa', [
         ('peca', 'Correia do alternador', 1, '90.00', '55.00', 'fiado', 1, False),
         ('peca', 'Fusível', 2, '5.00', '0.00', 'estoque', None, False),
-        ('servico', 'Troca de correia', '120.00', 'mecanico'),
+        ('servico', 'Troca de correia', '120.00', 'mecanico', 0),
     ]),
     ('DEM2B02', 1, 'aberta', '', 98700, 'Revisão de 100 mil', [
         ('peca', 'Kit correia dentada', 1, '420.00', '290.00', 'fiado', 0, False),
         ('peca', 'Bomba d’água', 1, '260.00', '170.00', 'fiado', 0, False),
-        ('servico', 'Troca de correia dentada e bomba', '450.00', 'ambos'),
+        ('servico', 'Troca de correia dentada e bomba', '450.00', 'ambos', 1),
     ]),
     ('DEM3C03', 0, 'aberta', '', 210400, 'Vazamento de óleo', [
-        ('servico', 'Diagnóstico de vazamento', '60.00', 'dono'),
+        ('servico', 'Diagnóstico de vazamento', '60.00', 'dono', None),
     ]),
 ]
 
@@ -97,6 +100,9 @@ class Command(BaseCommand):
             veiculos[placa] = Veiculo.objects.create(placa=placa, marca=marca, modelo=modelo, ano=ano,
                                                      cliente=clientes[nome])
         lojas = [Loja.objects.get_or_create(nome=nome)[0] for nome in LOJAS]
+        mecanicos = [Mecanico.objects.get_or_create(nome=nome, defaults={
+            'percentual_dono_sozinho': Decimal(sozinho), 'percentual_dono_junto': Decimal(junto)})[0]
+            for nome, sozinho, junto in MECANICOS]
 
         agora = timezone.now()
         for placa, dias, status, forma, km, pedido, itens in ORDENS:
@@ -118,9 +124,13 @@ class Command(BaseCommand):
                         pago_loja_em=(quando + timedelta(days=5)).date() if pago_loja else None,
                     )
                 else:
-                    _, desc, preco, executor = item
+                    _, desc, preco, executor, quem = item
+                    mecanico = mecanicos[quem] if quem is not None else None
+                    percentual = (Decimal('100') if mecanico is None else mecanico.percentual_dono_sozinho
+                                  if executor == ItemOS.MECANICO else mecanico.percentual_dono_junto)
                     novo = ItemOS.objects.create(os=os_, tipo=ItemOS.SERVICO, descricao=desc, quantidade=1,
-                                                 preco_unitario=Decimal(preco), executor=executor)
+                                                 preco_unitario=Decimal(preco), executor=executor,
+                                                 mecanico=mecanico, percentual_dono=percentual)
                 ItemOS.objects.filter(pk=novo.pk).update(criado_em=quando)
 
     def apagar(self):
@@ -132,3 +142,4 @@ class Command(BaseCommand):
         veiculos.delete()
         Cliente.objects.filter(pk__in=clientes, veiculos__isnull=True, ordens__isnull=True).delete()
         Loja.objects.filter(nome__in=LOJAS, itens__isnull=True, notas__isnull=True).delete()
+        Mecanico.objects.filter(nome__in=[m[0] for m in MECANICOS], servicos__isnull=True).delete()

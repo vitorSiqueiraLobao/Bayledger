@@ -13,7 +13,7 @@ It is a Django project with server-rendered pages and almost no JavaScript, so i
 | | |
 |---|---|
 | **Work orders** | Start from the plate: a known car opens its history, a new one asks for make/model/customer. Each OS has parts, labor, mileage and what the customer asked for. |
-| **Parts and labor** | Parts record where they came from (store on credit, store paid on the spot, internet, customer brought it, shop stock), the price charged to the customer and the cost at the store. Labor records who did it. |
+| **Parts and labor** | Parts record where they came from (store on credit, store paid on the spot, internet, customer brought it, shop stock), the price charged to the customer and the cost at the store. Labor records who did it: the owner, any mechanic, or the owner together with a mechanic. |
 | **Store accounts ("fiado")** | Parts bought on credit are tracked per store. *Owed now* = the customer already paid; *expected* = the OS is still open. Pay a store by ticking the parts you are settling; every payment is kept as a record. |
 | **Receipt photos** | The part form opens the phone camera. Photos are resized (long side 2560 px, JPEG), stripped of GPS/EXIF and stored under `media/notas/`. One paper = one photo: a receipt taken in the last 7 days can be reused for other parts, with a full-screen viewer to flip through them. |
 | **Revenue** | Totals for today / this week / this month / custom dates, by payment method, parts vs. labor, the markup on parts, the labor split between owner and mechanic, and the owner's result. |
@@ -39,15 +39,18 @@ aberta (open, editable) ──► finalizada ("ready, waiting for payment") ─�
 
 - **Cash price** is the sum of items. **Card price** is cash × `OFICINA_ACRESCIMO_CARTAO` (default 1.10).
 - **Convenience fee** (*taxa de comodidade*) = what the customer paid for parts − what the store charged. It goes entirely to the owner.
-- **Labor split**: each labor line says who did it (owner, mechanic or both) and is split with the fractions below; the mechanic gets the remainder so cents never disappear.
+- **Labor split**: every mechanic has his own sharing rule, set in the admin panel (`/painel/` → *Mecânicos*):
 
-  | Done by | Owner gets (default) | Setting |
+  | Mechanic field | Meaning | Default |
   |---|---|---|
-  | Owner | 100% | fixed |
-  | Mechanic alone | 30% | `OFICINA_PARTE_DONO_MECANICO` |
-  | Both | 50% | `OFICINA_PARTE_DONO_AMBOS` |
+  | `percentual_dono_sozinho` | % of the job that goes to the owner when **this mechanic does it alone** | 30 |
+  | `percentual_dono_junto` | % that goes to the owner when **the owner and this mechanic do it together** | 50 |
 
-- **Owner's result** = owner's share of the labor + convenience fee. Only paid OS count, by payment date, at the cash price.
+  Each labor line says who did it: the owner (keeps 100%), a mechanic alone, or the owner together with a mechanic. The mechanic gets the remainder, so cents never disappear. For example, with João at 30/50 and Pedro at 20/40, a R$ 200 job done by João alone splits 60 / 140, and the same job done by Pedro alone splits 40 / 160.
+
+  The percentage applied is **saved on the labor line** at the time it is logged. Changing a mechanic's percentages later only affects new lines; past orders and the revenue screen do not move. Two mechanics on the same job? Log it as two labor lines.
+
+- **Owner's result** = owner's share of the labor (from everybody) + convenience fee. Only paid OS count, by payment date, at the cash price.
 
 ### Users and permissions
 
@@ -55,6 +58,8 @@ There are no custom roles, only Django's:
 
 - **Owner** = a staff user (the superuser you create at install time). Can open the admin panel at `/painel/`, reopen/cancel paid OS, export the CSV, and sees the audit history.
 - **Employees** = any other user. Can do everything day to day (orders, parts, store payments, revenue screen) but not the owner-only actions above. Create them in `/painel/` → *Users* → *Add*, leaving *Staff status* unchecked.
+
+- **Mechanics** are not users: they are records in the admin panel with their sharing rule (see above). Stop one from showing up on the form by unticking *Ativo*; his past jobs keep his name. Add as many as you need.
 
 Everything except the login page requires a login, including the receipt photos (`/media/` goes through a login-protected view). Wrong passwords lock a user out for 15 minutes after 5 attempts, and an IP after 20, in both the app and the admin panel. Sessions last 60 days so nobody has to log in again on the phone all the time.
 
@@ -74,7 +79,7 @@ cp .env.example .env                       # optional: your shop's name, labor s
 .venv/bin/python manage.py runserver
 ```
 
-Open <http://localhost:8000>. `manage.py semear_demo --apagar` removes only the demo data. A fresh database starts empty.
+Open <http://localhost:8000>. To add your mechanics (and their sharing rule), go to <http://localhost:8000/painel/> → *Mecânicos* → *Add*. `manage.py semear_demo --apagar` removes only the demo data. A fresh database starts empty.
 
 Run the tests with `.venv/bin/python manage.py test core`. They fix their own configuration, so your `.env` does not affect them.
 
@@ -85,10 +90,7 @@ Nothing about a specific shop is hard-coded. Settings come from environment vari
 | Variable | Default | What it does |
 |---|---|---|
 | `OFICINA_NOME` | `Minha Oficina` | Shop name on the printed OS and the WhatsApp message. |
-| `OFICINA_NOME_DONO` | `Dono` | Owner's name as shown on screen (what is stored is the role `dono`). |
-| `OFICINA_NOME_MECANICO` | `Mecânico` | Mechanic's name as shown on screen (stored as `mecanico`). |
-| `OFICINA_PARTE_DONO_MECANICO` | `0.30` | Owner's fraction of labor done by the mechanic alone (0 to 1). |
-| `OFICINA_PARTE_DONO_AMBOS` | `0.50` | Owner's fraction of labor done by both. |
+| `OFICINA_NOME_DONO` | `Dono` | Owner's name as shown on screen. Mechanics are not configured here but in the admin panel. |
 | `OFICINA_ACRESCIMO_CARTAO` | `1.10` | Card multiplier over the cash price. |
 | `OFICINA_DDI` | `55` | Country code prepended to customer phones for the WhatsApp link. |
 | `OFICINA_CLOUDFLARE` | `0` | `1` only behind Cloudflare: trust `CF-Connecting-IP` as the client IP for the login lockout. Anywhere else that header can be forged. |
@@ -127,7 +129,7 @@ Things that are code constants rather than settings: the payment methods, order 
 ```
 config/            Django settings, URLs, WSGI
 core/
-  models.py        Cliente, Veiculo, Loja, Nota, PagamentoLoja, OrdemServico, ItemOS, Registro
+  models.py        Cliente, Veiculo, Mecanico, Loja, Nota, PagamentoLoja, OrdemServico, ItemOS, Registro
   views.py         All the screens
   forms.py         Forms and validation
   audit.py         Signals + middleware that fill the audit trail (Registro)
@@ -151,6 +153,7 @@ deploy/            Scripts to run it on a small always-on machine (see deploy/RE
 | Nota | The paper receipt the store hands over with the parts |
 | Placa | License plate |
 | Dono | Owner |
+| Mecânico | Mechanic (a person who does labor, with his own sharing rule) |
 | Taxa de comodidade | Convenience fee (markup on parts) |
 | Faturamento | Revenue |
 | Registro | Audit-trail entry |

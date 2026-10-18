@@ -11,7 +11,6 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
-from decimal import Decimal
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -180,32 +179,15 @@ LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'inicio'
 LOGOUT_REDIRECT_URL = 'login'
 
-def _fracao(nome, padrao):
-    valor = os.environ.get(nome, padrao)
-    if not Decimal('0') <= Decimal(valor) <= Decimal('1'):
-        raise RuntimeError(f'{nome} precisa ser uma fração entre 0 e 1 (ex.: 0.30), e não {valor!r}')
-    return valor
-
-
 # Tudo abaixo é da oficina e vem do .env / oficina.env (ver .env.example).
 NOME_OFICINA = os.environ.get('OFICINA_NOME', 'Minha Oficina')  # cabeçalho da OS impressa e do WhatsApp
 
 # Acréscimo no cartão (1.10 = 10% a mais)
 ACRESCIMO_CARTAO = os.environ.get('OFICINA_ACRESCIMO_CARTAO', '1.10')
 
-# A mão de obra é dividida entre o dono e um mecânico. Os nomes aparecem na tela; o que fica gravado no
-# banco são sempre as chaves 'dono' e 'mecanico'.
+# A mão de obra é dividida entre o dono e os mecânicos. O nome do dono vem daqui; os mecânicos e a partilha
+# de cada um são cadastrados no painel (/painel/ → Mecânicos).
 NOME_DONO = os.environ.get('OFICINA_NOME_DONO', 'Dono')
-NOME_MECANICO = os.environ.get('OFICINA_NOME_MECANICO', 'Mecânico')
-
-# Divisão da mão de obra conforme quem fez o serviço: fração de cada um (soma 1).
-_dono_com_mecanico = _fracao('OFICINA_PARTE_DONO_MECANICO', '0.30')  # parte do dono quando o mecânico faz sozinho
-_dono_com_ambos = _fracao('OFICINA_PARTE_DONO_AMBOS', '0.50')  # parte do dono quando os dois fazem juntos
-DIVISAO_MAO_DE_OBRA = {
-    'dono': {'dono': '1.00', 'mecanico': '0.00'},
-    'mecanico': {'dono': _dono_com_mecanico, 'mecanico': str(Decimal('1') - Decimal(_dono_com_mecanico))},
-    'ambos': {'dono': _dono_com_ambos, 'mecanico': str(Decimal('1') - Decimal(_dono_com_ambos))},
-}
 
 # DDI usado para montar o link do WhatsApp quando o telefone do cliente vem sem ele (55 = Brasil).
 CODIGO_PAIS_TELEFONE = os.environ.get('OFICINA_DDI', '55')
