@@ -9,7 +9,8 @@
   {{ os.cliente.nome }} <span class="ajuda">{{ os.cliente.telefone }}</span>
   {% if os.pedido %}<p class="ajuda" style="margin-bottom:0"><strong>Pedido:</strong> {{ os.pedido|linebreaksbr }}</p>{% endif %}
   {% if os.status == 'cancelada' %}<p class="erro">Cancelada: {{ os.motivo_cancelamento }}</p>{% endif %}
-  {% if os.status == 'paga' %}<p class="ajuda">Paga em {{ os.pago_em|date:"d/m/Y H:i" }} · {{ os.get_forma_pagamento_display }}</p>{% endif %}
+  {% if os.status == 'paga' %}<p class="ajuda">Paga em {{ os.pago_em|date:"d/m/Y H:i" }} · {{ os.get_forma_pagamento_display }}
+    · {{ os.total_pago|brl }}</p>{% endif %}
 </div>
 
 {% if os.editavel %}

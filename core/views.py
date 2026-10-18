@@ -287,9 +287,7 @@ def mudar_status(request, pk):
     elif acao == 'pagar' and os_.status in (OrdemServico.ABERTA, OrdemServico.FINALIZADA):
         form = PagarForm(request.POST)
         if form.is_valid():
-            os_.status = OrdemServico.PAGA
-            os_.forma_pagamento = form.cleaned_data['forma_pagamento']
-            os_.pago_em = timezone.now()
+            os_.registrar_pagamento(form.cleaned_data['forma_pagamento'])
             os_.save()
             messages.success(request, f'OS {os_.numero} paga.')
         else:
@@ -302,6 +300,7 @@ def mudar_status(request, pk):
             messages.error(request, 'Só o dono pode reabrir uma OS paga ou cancelada.')
         else:
             os_.status, os_.forma_pagamento, os_.pago_em = OrdemServico.ABERTA, '', None
+            os_.acrescimo_cartao = Decimal('0')
             os_.save()
     elif acao == 'cancelar' and os_.status != OrdemServico.CANCELADA:
         form = CancelarForm(request.POST)
@@ -389,7 +388,10 @@ def conta_loja(request, pk):
 
 @login_required
 def faturamento(request):
-    """O que entrou no período: só OS pagas, pela data em que o cliente pagou (valores à vista)."""
+    """O que entrou no período: só OS pagas, pela data em que o cliente pagou.
+
+    Peças e mão de obra a preço à vista; o acréscimo do cartão aparece à parte e fica todo com o dono.
+    """
     form = FaturamentoForm(request.GET or None)
     de, ate, periodo = form.intervalo(timezone.localdate())
     ordens = list(OrdemServico.objects.filter(status=OrdemServico.PAGA, pago_em__date__gte=de,
@@ -397,6 +399,8 @@ def faturamento(request):
                   .select_related('veiculo', 'cliente')
                   .annotate(valor=Sum(F('itens__quantidade') * F('itens__preco_unitario'), default=0))
                   .order_by('-pago_em'))
+    for o in ordens:
+        o.pago = o.valor + o.acrescimo_cartao
     itens = ItemOS.objects.filter(os__in=[o.pk for o in ordens])
     zero = Decimal('0')
 
@@ -404,10 +408,9 @@ def faturamento(request):
     for chave, nome in OrdemServico.FORMAS_PAGAMENTO:
         do_tipo = [o for o in ordens if o.forma_pagamento == chave]
         if do_tipo:
-            total = sum((o.valor for o in do_tipo), zero)
-            formas.append({'nome': nome, 'chave': chave, 'os': len(do_tipo), 'total': total,
-                           'maquininha': (total * Decimal(settings.ACRESCIMO_CARTAO)).quantize(Decimal('0.01'))
-                           if chave == 'cartao' else None})
+            formas.append({'nome': nome, 'chave': chave, 'os': len(do_tipo),
+                           'total': sum((o.pago for o in do_tipo), zero),
+                           'acrescimo': sum((o.acrescimo_cartao for o in do_tipo), zero)})
 
     pecas = itens.filter(tipo=ItemOS.PECA).aggregate(
         preco=Sum(F('quantidade') * F('preco_unitario'), default=zero),
@@ -422,12 +425,13 @@ def faturamento(request):
             sem_executor += item.total()
     servicos = sum(partes.values(), zero) + sem_executor
     comodidade = pecas['preco'] - pecas['custo']
+    acrescimo = sum((o.acrescimo_cartao for o in ordens), zero)
     return render(request, 'core/faturamento.html', {
         'form': form, 'periodo': periodo, 'de': de, 'ate': ate, 'ordens': ordens, 'formas': formas,
-        'recebido': sum((o.valor for o in ordens), zero),
+        'recebido': sum((o.pago for o in ordens), zero), 'acrescimo': acrescimo,
         'pecas': pecas['preco'], 'custo_pecas': pecas['custo'], 'comodidade': comodidade,
         'servicos': servicos, 'mao_de_obra': _linhas_divisao(partes), 'sem_executor': sem_executor,
-        'resultado_dono': partes['dono'] + comodidade, 'nome_dono': settings.NOME_DONO,
+        'resultado_dono': partes['dono'] + comodidade + acrescimo, 'nome_dono': settings.NOME_DONO,
     })
 
 

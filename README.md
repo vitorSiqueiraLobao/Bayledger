@@ -17,7 +17,7 @@ It is a Django project with server-rendered pages and almost no JavaScript, so i
 | **Store accounts ("fiado")** | Parts bought on credit are tracked per store. *Owed now* = the customer already paid; *expected* = the OS is still open. Pay a store by ticking the parts you are settling; every payment is kept as a record. |
 | **Settling with mechanics** | What the shop owes each mechanic for his share of the labor. *Owed now* = the customer already paid; *expected* = the OS is still open. One button records the payment, and every settlement is kept with the jobs it covered. |
 | **Receipt photos** | The part form opens the phone camera. Photos are resized (long side 2560 px, JPEG), stripped of GPS/EXIF and stored under `media/notas/`. One paper = one photo: a receipt taken in the last 7 days can be reused for other parts, with a full-screen viewer to flip through them. |
-| **Revenue** | Totals for today / this week / this month / custom dates, by payment method, parts vs. labor, the markup on parts, the labor split between owner and mechanic, and the owner's result. |
+| **Revenue** | Totals for today / this week / this month / custom dates, by payment method, parts vs. labor, the markup on parts, the card surcharge, the labor split between owner and mechanic, and the owner's result. |
 | **Print and WhatsApp** | A print-friendly page per OS (it does not show the labor split) and a pre-filled WhatsApp message with the cash and card totals. |
 | **Search** | Every OS ever made, by number, plate, customer or car, filterable by status and dates. |
 | **Audit trail** | Every create, update and delete of the important models is stored with user, time and before/after values. Nobody can edit it, not even through the admin. |
@@ -38,7 +38,7 @@ aberta (open, editable) ──► finalizada ("ready, waiting for payment") ─�
 
 ### Money rules
 
-- **Cash price** is the sum of items. **Card price** is cash × `OFICINA_ACRESCIMO_CARTAO` (default 1.10).
+- **Cash price** is the sum of items. **Card price** is cash × `OFICINA_ACRESCIMO_CARTAO` (default 1.10). The **card surcharge** (card price − cash price) is saved on the OS when it is paid by card, so changing the multiplier later does not change past orders. It counts as revenue and goes entirely to the owner, who pays for the card machine.
 - **Convenience fee** (*taxa de comodidade*) = what the customer paid for parts − what the store charged. It goes entirely to the owner.
 - **Labor split**: every mechanic has his own sharing rule, set in the admin panel (`/painel/` → *Mecânicos*):
 
@@ -52,7 +52,7 @@ aberta (open, editable) ──► finalizada ("ready, waiting for payment") ─�
   The percentage applied is **saved on the labor line** at the time it is logged. Changing a mechanic's percentages later only affects new lines; past orders and the revenue screen do not move. Two mechanics on the same job? Log it as two labor lines.
 
 - **Settling with a mechanic** (*acerto*): his balance is his share of the labor lines of **paid** OS that are not in any settlement yet. *Paguei* records a settlement (date, amount, who registered it) and links those lines to it, so they leave the balance. Lines of open or ready OS show as *expected* and join the balance once the customer pays.
-- **Owner's result** = owner's share of the labor (from everybody) + convenience fee. Only paid OS count, by payment date, at the cash price.
+- **Owner's result** = owner's share of the labor (from everybody) + convenience fee + card surcharge. Only paid OS count, by payment date. Parts and labor are shown at the cash price, with the card surcharge as a separate line, so mechanics' shares are always computed on the cash price.
 
 ### Users and permissions
 

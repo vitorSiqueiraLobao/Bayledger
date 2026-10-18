@@ -80,6 +80,7 @@ class FluxoCompleto(TestCase):
         self.client.post(f'/os/{os_.pk}/status/', {'acao': 'pagar', 'forma_pagamento': 'pix'})
         os_.refresh_from_db()
         self.assertEqual(os_.status, 'paga')
+        self.assertEqual(os_.acrescimo_cartao, Decimal('0'))
 
         # OS paga não aceita mais peça
         r = self.client.post(f'/os/{os_.pk}/peca/', {'descricao': 'X', 'quantidade': '1', 'preco_unitario': '1',
@@ -105,6 +106,23 @@ class FluxoCompleto(TestCase):
         self.client.post(f'/os/{os_.pk}/status/', {'acao': 'cancelar', 'motivo': 'ops'})
         os_.refresh_from_db()
         self.assertEqual(os_.status, 'paga')
+
+    def test_pago_no_cartao_grava_acrescimo_e_reabrir_zera(self):
+        dono = User.objects.create_user('dono', password='x', is_staff=True)
+        os_ = self.abrir_os()
+        self.client.post(f'/os/{os_.pk}/servico/', {'descricao': 'Revisão', 'preco_unitario': '100.05',
+                                                    'executor': 'dono'})
+        self.client.post(f'/os/{os_.pk}/status/', {'acao': 'pagar', 'forma_pagamento': 'cartao'})
+        os_.refresh_from_db()
+        self.assertEqual((os_.acrescimo_cartao, os_.total_pago()), (Decimal('10.01'), Decimal('110.06')))
+        self.assertContains(self.client.get(f'/os/{os_.pk}/'), 'Cartão\n    · R$ 110,06')
+        with self.settings(ACRESCIMO_CARTAO='1.20'):  # mudar o percentual depois não mexe no que já foi pago
+            self.assertEqual(OrdemServico.objects.get(pk=os_.pk).total_pago(), Decimal('110.06'))
+
+        self.client.force_login(dono)
+        self.client.post(f'/os/{os_.pk}/status/', {'acao': 'reabrir'})
+        os_.refresh_from_db()
+        self.assertEqual((os_.status, os_.acrescimo_cartao), ('aberta', Decimal('0')))
 
     def test_fiado_exige_loja_e_custo(self):
         os_ = self.abrir_os()
@@ -433,10 +451,13 @@ class Faturamento(TestCase):
         self.item(a, ItemOS.PECA, '100', custo='60')
         self.item(a, ItemOS.SERVICO, '200', executor=ItemOS.MECANICO, mecanico=self.joao, percentual=30)
         self.item(a, ItemOS.SERVICO, '100', executor=ItemOS.MECANICO, mecanico=self.pedro, percentual=20)
-        # Hoje: cartão com mão de obra do dono com o João (90,01 -> 45,00 / 45,01) e uma sem executor (10)
+        # Hoje: cartão com mão de obra do dono com o João (90,01 -> 45,00 / 45,01) e uma sem executor (10);
+        # acréscimo do cartão: 100,01 x 1,10 = 110,01 -> 10,00, todo do dono
         b = self.os_paga('cartao', agora)
         self.item(b, ItemOS.SERVICO, '90.01', executor=ItemOS.AMBOS, mecanico=self.joao, percentual=50)
         self.item(b, ItemOS.SERVICO, '10')
+        b.registrar_pagamento('cartao')
+        b.save()
         # Há 40 dias: dinheiro, só mão de obra do dono
         self.antiga = self.os_paga('dinheiro', agora - timedelta(days=40))
         self.item(self.antiga, ItemOS.SERVICO, '500', executor=ItemOS.DONO)
@@ -457,10 +478,11 @@ class Faturamento(TestCase):
     def test_hoje(self):
         c = self.client.get('/faturamento/?periodo=hoje').context
         self.assertEqual(len(c['ordens']), 2)
-        self.assertEqual(c['recebido'], Decimal('500.01'))
+        self.assertEqual(c['recebido'], Decimal('510.01'))
         self.assertEqual({f['chave']: f['total'] for f in c['formas']},
-                         {'pix': Decimal('400'), 'cartao': Decimal('100.01')})
-        self.assertEqual(c['formas'][1]['maquininha'], Decimal('110.01'))
+                         {'pix': Decimal('400'), 'cartao': Decimal('110.01')})
+        self.assertEqual((c['formas'][0]['acrescimo'], c['formas'][1]['acrescimo']), (Decimal('0'), Decimal('10.00')))
+        self.assertEqual(c['acrescimo'], Decimal('10.00'))
         self.assertEqual((c['pecas'], c['custo_pecas'], c['comodidade']),
                          (Decimal('100'), Decimal('60'), Decimal('40')))
         self.assertEqual(c['servicos'], Decimal('400.01'))
@@ -468,8 +490,8 @@ class Faturamento(TestCase):
                                             {'nome': 'João', 'valor': Decimal('185.01')},
                                             {'nome': 'Pedro', 'valor': Decimal('80.00')}])
         self.assertEqual(c['sem_executor'], Decimal('10'))
-        self.assertEqual(c['resultado_dono'], Decimal('165.00'))
-        self.assertEqual(c['pecas'] + c['servicos'], c['recebido'])
+        self.assertEqual(c['resultado_dono'], Decimal('175.00'))
+        self.assertEqual(c['pecas'] + c['servicos'] + c['acrescimo'], c['recebido'])
 
     def test_datas_livres_e_ordem_invertida(self):
         hoje = timezone.localdate()
@@ -483,8 +505,8 @@ class Faturamento(TestCase):
     def test_sem_nada_no_periodo(self):
         hoje = timezone.localdate() + timedelta(days=1)
         r = self.client.get(f'/faturamento/?periodo=livre&de={hoje:%Y-%m-%d}')
-        self.assertEqual((r.context['recebido'], r.context['resultado_dono'], r.context['formas']),
-                         (Decimal('0'), Decimal('0'), []))
+        self.assertEqual((r.context['recebido'], r.context['resultado_dono'], r.context['formas'], r.context['acrescimo']),
+                         (Decimal('0'), Decimal('0'), [], Decimal('0')))
         self.assertEqual(r.context['mao_de_obra'], [{'nome': 'Dono Teste', 'valor': Decimal('0')}])
         self.assertContains(r, 'R$ 0,00')
 

@@ -21,17 +21,18 @@
 </details>
 
 <p class="ajuda">{% if de == ate %}{{ de|date:"d/m/Y" }}{% else %}{{ de|date:"d/m/Y" }} a {{ ate|date:"d/m/Y" }}{% endif %}
-  · {{ ordens|length }} OS paga(s). Conta só OS paga, pela data do pagamento, com o valor à vista.</p>
+  · {{ ordens|length }} OS paga(s). Conta só OS paga, pela data do pagamento.</p>
 
 <div class="cartao totais">
   <div class="principal"><span>Total recebido</span><span>{{ recebido|brl }}</span></div>
   {% for f in formas %}
   <div><span>{{ f.nome }} <span class="sub">· {{ f.os }} OS</span></span><span>{{ f.total|brl }}</span></div>
-  {% if f.maquininha %}<div class="sub"><span>cobrado na maquininha (com acréscimo)</span><span>{{ f.maquininha|brl }}</span></div>{% endif %}
+  {% if f.acrescimo %}<div class="sub"><span>inclui acréscimo do cartão</span><span>{{ f.acrescimo|brl }}</span></div>{% endif %}
   {% endfor %}
 </div>
 
 <h2>Peças x mão de obra</h2>
+<p class="ajuda">Valores à vista. O acréscimo do cartão está separado no fim.</p>
 <div class="cartao totais">
   <div><span>Peças (cobrado do cliente)</span><span>{{ pecas|brl }}</span></div>
   <div><span>Custo das peças nas lojas</span><span>{{ custo_pecas|brl }}</span></div>
@@ -44,8 +45,10 @@
 </div>
 
 <div class="cartao totais">
+  <div class="ganho"><span>Acréscimo do cartão</span><span>{{ acrescimo|brl }}</span></div>
   <div class="principal ganho"><span>Resultado de {{ nome_dono }}</span><span>{{ resultado_dono|brl }}</span></div>
-  <p class="ajuda">Parte do dono na mão de obra + taxa de comodidade das peças.</p>
+  <p class="ajuda">Parte do dono na mão de obra + taxa de comodidade das peças + acréscimo do cartão
+    (é o dono quem paga a maquininha).</p>
 </div>
 
 {% if ordens %}
@@ -56,7 +59,7 @@
     <li><a class="linha-os" href="{% url 'os' o.pk %}">
       <span><strong>{{ o.veiculo.placa }}</strong> · {{ o.veiculo.modelo }}<br>
         <span class="sub">OS {{ o.numero }} · {{ o.cliente.nome }} · {{ o.pago_em|date:"d/m" }} · {{ o.get_forma_pagamento_display }}</span></span>
-      <span class="valor">{{ o.valor|brl }}</span>
+      <span class="valor">{{ o.pago|brl }}</span>
     </a></li>
   {% endfor %}
   </ul>

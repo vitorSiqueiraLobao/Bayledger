@@ -132,6 +132,8 @@ class Command(BaseCommand):
                                                  preco_unitario=Decimal(preco), executor=executor,
                                                  mecanico=mecanico, percentual_dono=percentual)
                 ItemOS.objects.filter(pk=novo.pk).update(criado_em=quando)
+            if status == OrdemServico.PAGA and forma == 'cartao':
+                OrdemServico.objects.filter(pk=os_.pk).update(acrescimo_cartao=os_.total_cartao() - os_.total())
 
     def apagar(self):
         veiculos = Veiculo.objects.filter(placa__startswith=PREFIXO_PLACA)

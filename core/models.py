@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import F, Sum
+from django.utils import timezone
 
 
 class Cliente(models.Model):
@@ -156,6 +157,9 @@ class OrdemServico(models.Model):
     status = models.CharField(max_length=12, choices=STATUS, default=ABERTA)
     forma_pagamento = models.CharField(max_length=10, choices=FORMAS_PAGAMENTO, blank=True)
     pago_em = models.DateTimeField(null=True, blank=True)
+    acrescimo_cartao = models.DecimalField(
+        'acréscimo do cartão', max_digits=10, decimal_places=2, default=Decimal('0'),
+        help_text='O que o cliente pagou a mais por ser no cartão, gravado na hora do pagamento. Fica com o dono.')
     motivo_cancelamento = models.TextField(blank=True)
     criado_em = models.DateTimeField(auto_now_add=True)
     criado_por = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, editable=False)
@@ -183,6 +187,14 @@ class OrdemServico(models.Model):
 
     def total_cartao(self):
         return (self.total() * Decimal(settings.ACRESCIMO_CARTAO)).quantize(Decimal('0.01'))
+
+    def total_pago(self):
+        """O que o cliente pagou de fato: à vista + acréscimo do cartão (zero se não foi no cartão)."""
+        return self.total() + self.acrescimo_cartao
+
+    def registrar_pagamento(self, forma):
+        self.status, self.forma_pagamento, self.pago_em = self.PAGA, forma, timezone.now()
+        self.acrescimo_cartao = self.total_cartao() - self.total() if forma == 'cartao' else Decimal('0')
 
     def total_pecas(self):
         r = self.itens.filter(tipo=ItemOS.PECA).aggregate(t=Sum(F('quantidade') * F('preco_unitario')))
