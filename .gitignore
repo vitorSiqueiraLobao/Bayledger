@@ -19,3 +19,7 @@ deploy/servidor.env
 .claude/
 TODO.md
 ideias.md
+
+# Arquivo e documentos de referência dos clientes
+*.zip
+referencias_os/

@@ -850,3 +850,55 @@ class Configuracao(TestCase):
 
     def test_banco_novo_comeca_vazio(self):
         self.assertFalse(Veiculo.objects.exists())
+
+
+class ImpressaoModelo(TestCase):
+    def setUp(self):
+        self.usuario = User.objects.create_user('impressao', password='x')
+        self.client.force_login(self.usuario)
+        cliente = Cliente.objects.create(nome='Cliente <Teste>')
+        veiculo = Veiculo.objects.create(cliente=cliente, placa='ABC1D23', modelo='Modelo', marca='Marca')
+        self.os = OrdemServico.objects.create(cliente=cliente, veiculo=veiculo, km=0, pedido='Revisar <motor>')
+        self.pasta = tempfile.TemporaryDirectory()
+        self.addCleanup(self.pasta.cleanup)
+        self.config = override_settings(DIRETORIO_IMPRESSAO=self.pasta.name)
+        self.config.enable()
+        self.addCleanup(self.config.disable)
+
+    def test_modelo_totais_quantidades_e_escape(self):
+        ItemOS.objects.create(os=self.os, tipo='peca', descricao='Filtro', quantidade=2,
+                              preco_unitario=Decimal('123.45'), custo_unitario=Decimal('77'), origem='estoque')
+        r = self.client.get(f'/os/{self.os.pk}/imprimir/')
+        self.assertContains(r, 'Cliente &lt;Teste&gt;')
+        self.assertContains(r, 'Revisar &lt;motor&gt;')
+        self.assertContains(r, '<td>2</td>', html=True)
+        self.assertContains(r, '<td>246,90</td>', html=True)
+        self.assertContains(r, '<td>271,59</td>', html=True)
+        self.assertContains(r, 'class="vazia"', count=22)
+        self.assertNotContains(r, '77,00')
+        self.assertNotContains(r, 'QR code Pix')
+
+    def test_imagem_pix_preservada_e_acesso_restrito(self):
+        import base64
+        from pathlib import Path
+        arquivo = Path(self.pasta.name) / 'pix.png'
+        Image.new('RGB', (20, 20), 'white').save(arquivo)
+        r = self.client.get(f'/os/{self.os.pk}/imprimir/')
+        self.assertContains(r, 'data:image/png;base64,' + base64.b64encode(arquivo.read_bytes()).decode())
+        self.assertContains(r, 'QR code Pix da oficina')
+        self.client.logout()
+        self.assertEqual(self.client.get(f'/os/{self.os.pk}/imprimir/').status_code, 302)
+
+    def test_lista_longa_sem_cortar_itens_e_total_congelado(self):
+        for n in range(30):
+            ItemOS.objects.create(os=self.os, tipo='servico', descricao=f'Serviço {n}', quantidade=1,
+                                  preco_unitario=Decimal('10'), executor='dono')
+        self.os.status = 'paga'
+        self.os.forma_pagamento = 'cartao'
+        self.os.acrescimo_cartao = Decimal('30')
+        self.os.save()
+        with override_settings(ACRESCIMO_CARTAO='1.50'):
+            r = self.client.get(f'/os/{self.os.pk}/imprimir/')
+        self.assertNotContains(r, 'class="vazia"')
+        self.assertContains(r, 'Serviço 29')
+        self.assertContains(r, '<td>330,00</td>', html=True)

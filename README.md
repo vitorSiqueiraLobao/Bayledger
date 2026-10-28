@@ -175,3 +175,18 @@ deploy/            Scripts to run it on a small always-on machine (see deploy/RE
 This is a *source-available* license, not an OSI-approved open-source one. If you want to do something it does not allow (for example, offer the app to other shops), contact the author.
 
 The inline icons are from [Lucide](https://lucide.dev) and keep their own license (ISC).
+
+### Printed work-order form
+
+The A4 print view follows the workshop form: colored customer fields, service request,
+23 item lines (expanding for larger orders), card/cash totals and handwritten workshop notes.
+Print with A4 paper and browser headers/footers disabled; background colors are requested by the page.
+Unknown fields such as address, chassis and disposal authorization are left for manual completion.
+
+The header uses private PNG files in `OFICINA_DATA_DIR/media/impressao/`:
+`logo.png`, `endereco.png`, `telefone.png` and `pix.png` (the original Pix QR image).
+Copy these assets along with the shop's media when deploying; never commit them.
+`OFICINA_IMPRESSAO_DIR` can override this directory. Missing assets are omitted, with the
+configured shop name used when no logo is installed. Images are embedded in the authenticated
+print page, so saving/printing requires no external image service. No payment amount is changed
+or encoded by the print view: the supplied QR image is preserved exactly.

@@ -200,3 +200,6 @@ CONFIAR_IP_CLOUDFLARE = os.environ.get('OFICINA_CLOUDFLARE', '0') == '1'
 # e cada foto cai de ~4 MB para ~0,5 MB.
 FOTO_NOTA_LADO_MAX = 2560
 FOTO_NOTA_QUALIDADE = 88
+
+# Imagens privadas do cabeçalho da OS (logo, endereço, telefone e QR Pix).
+DIRETORIO_IMPRESSAO = Path(os.environ.get('OFICINA_IMPRESSAO_DIR', DATA_DIR / 'media' / 'impressao'))

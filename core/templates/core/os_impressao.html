@@ -1,32 +1,87 @@
 {% load formatos %}<!doctype html>
 <html lang="pt-br"><head><meta charset="utf-8"><title>OS {{ os.numero }} – {{ os.veiculo.placa }}</title>
 <style>
-  body { font-family: Arial, sans-serif; font-size: 13px; color: #000; max-width: 780px; margin: 20px auto; padding: 0 16px; }
-  h1 { font-size: 18px; margin: 0; } .topo { display: flex; justify-content: space-between; border-bottom: 2px solid #000; padding-bottom: 8px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 12px; } th, td { border: 1px solid #888; padding: 6px; text-align: left; }
-  td.n, th.n { text-align: right; white-space: nowrap; } .dados td { border: 0; padding: 3px 0; }
-  .total td { font-weight: bold; font-size: 15px; } .assin { margin-top: 48px; display: flex; gap: 40px; }
-  .assin div { flex: 1; border-top: 1px solid #000; text-align: center; padding-top: 4px; }
-  @media print { .nao-imprimir { display: none; } body { margin: 0; } }
-</style></head>
-<body>
-<p class="nao-imprimir"><button onclick="window.print()">Imprimir</button></p>
-<div class="topo"><div><h1>{{ oficina }}</h1>Solicitação de serviços e peças</div>
-  <div style="text-align:right"><strong style="font-size:18px">OS {{ os.numero }}</strong><br>{{ os.criado_em|date:"d/m/Y" }}</div></div>
-<table class="dados">
-  <tr><td><strong>Cliente:</strong> {{ os.cliente.nome }}</td><td><strong>Telefone:</strong> {{ os.cliente.telefone }}</td></tr>
-  <tr><td><strong>Veículo:</strong> {{ os.veiculo.marca }} {{ os.veiculo.modelo }} {{ os.veiculo.ano }}</td>
-      <td><strong>Placa:</strong> {{ os.veiculo.placa }} &nbsp; <strong>Km:</strong> {{ os.km|default:"" }}</td></tr>
-  {% if os.pedido %}<tr><td colspan="2"><strong>Solicitação:</strong> {{ os.pedido }}</td></tr>{% endif %}
-</table>
-<table>
-  <tr><th class="n">Qtd</th><th>Descrição</th><th class="n">Unit.</th><th class="n">Valor</th></tr>
-  {% for i in itens %}
-  <tr><td class="n">{{ i.quantidade|qtd }}</td><td>{{ i.descricao }}{% if i.origem == 'cliente' %} (peça do cliente){% endif %}</td>
-      <td class="n">{{ i.preco_unitario|brl }}</td><td class="n">{{ i.total|brl }}</td></tr>
-  {% endfor %}
-  <tr class="total"><td colspan="3">TOTAL À VISTA</td><td class="n">{{ os.total|brl }}</td></tr>
-  <tr><td colspan="3">Total no cartão</td><td class="n">{{ os.total_cartao|brl }}</td></tr>
-</table>
-<div class="assin"><div>Oficina</div><div>Cliente</div></div>
-</body></html>
+  @page { size: A4; margin: 25mm 14mm 25mm 19mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; color: #000; margin: 20px auto; width: 177mm; }
+  .folha { border: .4mm solid #000; font-weight: bold; }
+  .cabecalho { height: 23.5mm; display: flex; align-items: flex-start; padding: 0 1mm; gap: 0.5mm; }
+  .logo { width: 42mm; height: 22mm; object-fit: contain; }
+  .contato { flex: 1; min-width: 0; padding-top: 1mm; }
+  .endereco { width: 100%; height: auto; display: block; }
+  .telefone { display: block; width: 91mm; height: 8mm; object-fit: contain; object-position: left; }
+  .chamada-pix { text-align: right; font-size: 14pt; line-height: 7mm; padding-right: 1mm; }
+  .seta { font-size: 32pt; vertical-align: middle; margin-left: 3mm; }
+  .pix { width: 24mm; height: 24mm; object-fit: contain; }
+  .titulo { display: flex; align-items: center; background: #c4be97; height: 8.5mm; border-bottom: .25mm solid; font-size: 12pt; }
+  .titulo span { flex: 1; text-align: center; }
+  .titulo b { background: white; padding: 0 .7mm; align-self: stretch; display: flex; align-items: center; }
+  .titulo strong { min-width: 18mm; text-align: center; }
+  .espaco { height: 5.5mm; }
+  .faixa { background: #c4be97; border-top: .25mm solid; border-bottom: .25mm solid; text-align: center; font-size: 9pt; height: 5mm; line-height: 4.5mm; }
+  .dados { padding-top: 2mm; font-size: 6.5pt; }
+  .linha { display: flex; align-items: center; min-height: 5mm; gap: .6mm; padding: 0 1mm; }
+  .rotulo { text-align: center; white-space: nowrap; }
+  .azul { background: #c5d9f1; text-align: center; padding: .6mm 1mm; overflow-wrap: anywhere; }
+  .nome { flex: 1; font-size: 11pt; }
+  .placa { min-width: 15mm; font-size: 7.5pt; }
+  .data { width: 26mm; }
+  .campo { flex: 1; font-size: 8pt; }
+  .revisao { justify-content: space-evenly; }
+  .ficha { display: grid; grid-template-columns: 31mm 1fr; font-size: 6.5pt; }
+  .ficha .rotulo { padding-top: 1mm; }
+  .pautado { border-left: .25mm solid; }
+  .pauta { min-height: 4.7mm; border-bottom: .25mm solid; padding: .4mm 1mm; overflow-wrap: anywhere; }
+  .modelo { border-top: .25mm solid; }
+  .solicitacao { margin-top: 2mm; }
+  .pedido { margin: 2mm 0; min-height: 19mm; }
+  .pedido .pautado { min-height: 19mm; background: repeating-linear-gradient(to bottom, transparent 0, transparent 3.5mm, black 3.5mm, black 3.7mm); }
+  .texto-pedido { background: white; text-align: center; font-size: 9pt; line-height: 3.7mm; padding: 0 1mm; overflow-wrap: anywhere; white-space: pre-line; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .itens { font-size: 11pt; text-align: center; }
+  td, th { border: .25mm solid #000; padding: 0 .5mm; }
+  .itens th { height: 5mm; font-size: 6pt; }
+  .itens th:nth-child(2) { background: #c4be97; }
+  .itens td { height: 4.2mm; line-height: 4mm; overflow-wrap: anywhere; }
+  .itens td:last-child { text-align: right; white-space: nowrap; }
+  .descricao { text-transform: uppercase; }
+  .horas { height: 5mm; background: #d9d9d9; text-align: center; font-weight: normal; font-size: 8pt; line-height: 5mm; }
+  .observacoes { font-size: 7pt; text-align: center; }
+  .observacoes td, .observacoes th { height: 4.8mm; }
+  tr, .cabecalho, .titulo, .ficha, .rodape { break-inside: avoid; }
+  .nao-imprimir { font: 14px Arial; margin: 0 0 15px; }
+  @media print { body { margin: 0; width: 100%; } .nao-imprimir { display: none; } * { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+</style></head><body>
+<p class="nao-imprimir"><button onclick="window.print()">Imprimir / salvar PDF</button> <a href="{% url 'os' os.pk %}">Voltar à OS</a></p>
+<main class="folha">
+<header class="cabecalho">
+  {% if imagens.logo %}<img class="logo" src="{{ imagens.logo }}" alt="{{ oficina }}">{% else %}<strong class="logo">{{ oficina }}</strong>{% endif %}
+  <div class="contato">
+    {% if imagens.endereco %}<img class="endereco" src="{{ imagens.endereco }}" alt="Endereço da oficina">{% endif %}
+    {% if imagens.telefone %}<img class="telefone" src="{{ imagens.telefone }}" alt="Telefone da oficina">{% endif %}
+    {% if imagens.pix %}<div class="chamada-pix"><u>PIX</u><span class="seta">➜</span></div>{% endif %}
+  </div>
+  {% if imagens.pix %}<img class="pix" src="{{ imagens.pix }}" alt="QR code Pix da oficina">{% endif %}
+</header>
+<div class="titulo"><span>SOLICITAÇÃO DE SERVIÇOS E PEÇAS .</span><b>OS:</b><strong>{{ os.numero }}</strong></div>
+<div class="espaco"></div><div class="faixa">SOLICITANTE</div>
+<section class="dados">
+  <div class="linha"><span class="rotulo">NOME DO SOLICITANTE:</span><strong class="azul nome">{{ os.cliente.nome }}</strong><span>PLACA:</span><strong class="azul placa">{{ os.veiculo.placa }}</strong><span>DATA:</span><strong class="azul data">{{ os.criado_em|date:"d/m/Y" }}</strong></div>
+  <div class="linha revisao"><span>REVISÃO:</span><span>( &nbsp; ) NÃO</span><span>PEÇA ORIGINAL:</span><span>&nbsp;</span></div>
+  <div class="linha"><span>MODELO:</span><strong class="azul campo">{{ os.veiculo.modelo }}</strong><span>km:</span><strong class="azul campo">{{ os.km|default_if_none:"" }}</strong><span>MARCA:</span><strong class="azul campo">{{ os.veiculo.marca }}</strong><span>PEÇAS RETIRADAS SERÃO DESCARTADAS? &nbsp; ( ) SIM &nbsp; ( ) NÃO</span></div>
+</section>
+<div class="ficha"><div class="rotulo">MODELO E Nº chassi:</div><div class="pautado"><div class="pauta modelo">{{ os.veiculo.modelo }} {{ os.veiculo.marca }}{% if os.veiculo.ano %} ANO {{ os.veiculo.ano }}{% endif %}</div></div><div class="rotulo">ENDEREÇO:</div><div class="pautado"><div class="pauta"></div><div class="pauta"></div></div></div>
+<div class="faixa solicitacao">SOLICITAÇÃO DE SERVIÇO.</div>
+<div class="ficha pedido"><div class="rotulo">DESCRIÇÃO:</div><div class="pautado"><div class="texto-pedido">{{ os.pedido }}</div></div></div>
+<table class="itens"><colgroup><col style="width: 15.5mm"><col><col style="width: 18mm"></colgroup>
+<thead><tr><th>QUANTIDADE</th><th aria-label="Descrição"></th><th aria-label="Valor"></th></tr></thead>
+<tbody>
+{% for i in itens %}<tr><td>{{ i.quantidade|qtd }}</td><td class="descricao">{% if i.tipo == 'servico' %}* {% endif %}{{ i.descricao }}{% if i.origem == 'cliente' %} (peça do cliente){% endif %}</td><td>{{ i.total|valor_os }}</td></tr>{% endfor %}
+{% for linha in linhas_vazias %}<tr class="vazia"><td>&nbsp;</td><td></td><td></td></tr>{% endfor %}
+</tbody><tbody class="totais">
+<tr><td></td><td>TOTAL NO DÉBITO E CRÉDITO</td><td>{{ total_cartao|valor_os }}</td></tr>
+<tr><td></td><td>TOTAL À VISTA EM DINHEIRO E PIX</td><td>{{ os.total|valor_os }}</td></tr>
+</tbody></table>
+<div class="rodape"><div class="faixa">Para preenchimento Da Oficina</div><div class="horas">HORAS TRABALHADAS</div>
+<table class="observacoes"><colgroup><col style="width:31mm"><col style="width:19mm"><col></colgroup><tr><th>Observações</th><th>DATA</th><th>OBSERVAÇÕES</th></tr><tr><td></td><td></td><td></td></tr><tr><td></td><td></td><td></td></tr><tr><td></td><td></td><td></td></tr></table></div>
+</main></body></html>

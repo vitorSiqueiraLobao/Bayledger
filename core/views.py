@@ -318,8 +318,15 @@ def mudar_status(request, pk):
 @login_required
 def imprimir_os(request, pk):
     os_ = get_object_or_404(OrdemServico.objects.select_related('veiculo', 'cliente'), pk=pk)
-    return render(request, 'core/os_impressao.html', {'os': os_, 'itens': os_.itens.all(),
-                                                      'oficina': settings.NOME_OFICINA})
+    from .impressao import imagens_impressao
+
+    itens = list(os_.itens.all())
+    return render(request, 'core/os_impressao.html', {
+        'os': os_, 'itens': itens, 'linhas_vazias': range(max(0, 23 - len(itens))),
+        'oficina': settings.NOME_OFICINA, 'imagens': imagens_impressao(),
+        'total_cartao': os_.total_pago() if os_.status == OrdemServico.PAGA
+                        and os_.forma_pagamento == 'cartao' else os_.total_cartao(),
+    })
 
 
 def _fiado_em_aberto():

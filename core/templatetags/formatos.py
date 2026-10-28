@@ -19,3 +19,9 @@ def qtd(valor):
     """2.00 -> '2', 1.50 -> '1,5'"""
     texto = f'{Decimal(valor).normalize():f}'
     return texto.replace('.', ',')
+
+
+@register.filter
+def valor_os(valor):
+    """Valor monetário sem o prefixo, conforme o formulário impresso."""
+    return brl(valor).removeprefix('R$ ')
